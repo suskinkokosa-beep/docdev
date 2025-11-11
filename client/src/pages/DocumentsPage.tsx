@@ -8,6 +8,7 @@ import { Upload, Search, FileText, Eye, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { DocumentUploadDialog } from "@/components/DocumentUploadDialog";
 
 interface Document {
   id: string;
@@ -23,6 +24,7 @@ interface Document {
 
 export function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ['/api/documents'],
@@ -59,7 +61,10 @@ export function DocumentsPage() {
           <h1 className="text-2xl font-semibold">Документы</h1>
           <p className="text-muted-foreground">Централизованное хранилище документации</p>
         </div>
-        <Button data-testid="button-upload-document">
+        <Button 
+          data-testid="button-upload-document"
+          onClick={() => setDialogOpen(true)}
+        >
           <Upload className="mr-2 h-4 w-4" />
           Загрузить документ
         </Button>
@@ -128,6 +133,11 @@ export function DocumentsPage() {
           )}
         </CardContent>
       </Card>
+
+      <DocumentUploadDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
     </div>
   );
 }

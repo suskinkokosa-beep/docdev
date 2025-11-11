@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Shield } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RoleFormDialog } from "@/components/RoleFormDialog";
 
 interface Role {
   id: string;
@@ -28,6 +29,8 @@ interface RolePermission {
 
 export function RolesPage() {
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
 
   const { data: roles = [], isLoading: rolesLoading } = useQuery<Role[]>({
     queryKey: ['/api/roles'],
@@ -104,7 +107,13 @@ export function RolesPage() {
           <h1 className="text-2xl font-semibold">Права и роли</h1>
           <p className="text-muted-foreground">Конструктор ролей с гранулярными правами</p>
         </div>
-        <Button data-testid="button-add-role">
+        <Button 
+          data-testid="button-add-role"
+          onClick={() => {
+            setDialogMode("create");
+            setDialogOpen(true);
+          }}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Создать роль
         </Button>
@@ -200,6 +209,13 @@ export function RolesPage() {
           </CardContent>
         </Card>
       </div>
+
+      <RoleFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        role={selectedRole}
+        mode={dialogMode}
+      />
     </div>
   );
 }

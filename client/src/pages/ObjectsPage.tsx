@@ -14,6 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ObjectFormDialog } from "@/components/ObjectFormDialog";
+import { QRCodeDialog } from "@/components/QRCodeDialog";
 
 interface Object {
   id: string;
@@ -27,6 +29,11 @@ interface Object {
 
 export function ObjectsPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedObject, setSelectedObject] = useState<Object | undefined>(undefined);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [qrDialogOpen, setQrDialogOpen] = useState(false);
+  const [qrObject, setQrObject] = useState<Object | null>(null);
 
   const { data: objects = [], isLoading } = useQuery<Object[]>({
     queryKey: ['/api/objects'],
@@ -69,7 +76,14 @@ export function ObjectsPage() {
           <h1 className="text-2xl font-semibold">Объекты</h1>
           <p className="text-muted-foreground">Управление объектами газопроводов</p>
         </div>
-        <Button data-testid="button-add-object">
+        <Button 
+          data-testid="button-add-object"
+          onClick={() => {
+            setSelectedObject(undefined);
+            setDialogMode("create");
+            setDialogOpen(true);
+          }}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Добавить объект
         </Button>
@@ -126,7 +140,15 @@ export function ObjectsPage() {
                       <TableCell>{getStatusBadge(obj.status)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button size="icon" variant="ghost" data-testid={`button-qr-${obj.id}`}>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            data-testid={`button-qr-${obj.id}`}
+                            onClick={() => {
+                              setQrObject(obj);
+                              setQrDialogOpen(true);
+                            }}
+                          >
                             <QrCode className="h-4 w-4" />
                           </Button>
                           <Button size="icon" variant="ghost" data-testid={`button-download-${obj.id}`}>
@@ -142,6 +164,22 @@ export function ObjectsPage() {
           )}
         </CardContent>
       </Card>
+
+      <ObjectFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        object={selectedObject}
+        mode={dialogMode}
+      />
+
+      {qrObject && (
+        <QRCodeDialog
+          open={qrDialogOpen}
+          onOpenChange={setQrDialogOpen}
+          objectCode={qrObject.code}
+          objectName={qrObject.name}
+        />
+      )}
     </div>
   );
 }

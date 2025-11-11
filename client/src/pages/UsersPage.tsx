@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UserFormDialog } from "@/components/UserFormDialog";
 
 interface Role {
   id: string;
@@ -41,6 +42,9 @@ interface User {
 
 export function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | undefined>(undefined);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/users'],
@@ -83,7 +87,14 @@ export function UsersPage() {
           <h1 className="text-2xl font-semibold">Пользователи</h1>
           <p className="text-muted-foreground">Управление пользователями системы</p>
         </div>
-        <Button data-testid="button-add-user">
+        <Button 
+          data-testid="button-add-user"
+          onClick={() => {
+            setSelectedUser(undefined);
+            setDialogMode("create");
+            setDialogOpen(true);
+          }}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Добавить пользователя
         </Button>
@@ -160,7 +171,13 @@ export function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>Редактировать</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {
+                              setSelectedUser(user);
+                              setDialogMode("edit");
+                              setDialogOpen(true);
+                            }}>
+                              Редактировать
+                            </DropdownMenuItem>
                             <DropdownMenuItem>Права доступа</DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive">
                               {user.status === 'active' ? 'Деактивировать' : 'Активировать'}
@@ -176,6 +193,13 @@ export function UsersPage() {
           )}
         </CardContent>
       </Card>
+
+      <UserFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        user={selectedUser}
+        mode={dialogMode}
+      />
     </div>
   );
 }
