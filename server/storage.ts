@@ -14,7 +14,7 @@ import {
   type InsertDepartment, type Department,
   type InsertObject, type PipelineObject,
   type InsertDocumentCategory, type DocumentCategory,
-  type InsertDocument, type Document,
+  type InsertDocument, type UpdateDocument, type Document,
   type InsertTrainingProgram, type TrainingProgram,
   type InsertAuditLog, type AuditLog
 } from "@shared/schema";
@@ -317,7 +317,7 @@ export const storage = {
     return doc;
   },
 
-  async updateDocument(id: string, data: Partial<InsertDocument>) {
+  async updateDocument(id: string, data: UpdateDocument) {
     const [doc] = await db.update(documents)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(documents.id, id))
@@ -469,11 +469,15 @@ export const storage = {
 
   // ========== Notifications ==========
   async getUserNotifications(userId: string, unreadOnly: boolean = false) {
-    let query = db.select().from(notifications).where(eq(notifications.userId, userId));
-    if (unreadOnly) {
-      query = query.where(eq(notifications.read, false)) as any;
-    }
-    return await query.orderBy(sql`${notifications.createdAt} DESC`).limit(50);
+    const whereConditions = unreadOnly 
+      ? and(eq(notifications.userId, userId), eq(notifications.read, false))
+      : eq(notifications.userId, userId);
+    
+    return await db.select()
+      .from(notifications)
+      .where(whereConditions)
+      .orderBy(sql`${notifications.createdAt} DESC`)
+      .limit(50);
   },
 
   async createNotification(data: any) {
