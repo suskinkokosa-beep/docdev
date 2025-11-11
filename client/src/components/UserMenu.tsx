@@ -13,6 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 
+interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  isSystem: boolean;
+  createdAt: string;
+}
+
 interface UserData {
   id: string;
   username: string;
@@ -25,7 +33,7 @@ export function UserMenu() {
   const [, setLocation] = useLocation();
   const [user, setUser] = useState<UserData | null>(null);
 
-  const { data: userData } = useQuery<{ user: UserData; roles: string[] }>({
+  const { data: userData } = useQuery<{ user: UserData; roles: Role[] }>({
     queryKey: ["/api/auth/me"],
     queryFn: async () => {
       const response = await fetch("/api/auth/me", {
@@ -82,7 +90,7 @@ export function UserMenu() {
           <div className="hidden md:flex flex-col items-start">
             <span className="text-sm font-medium">{displayName}</span>
             <span className="text-xs text-muted-foreground">
-              {userData?.roles?.[0] || "Пользователь"}
+              {userData?.roles?.[0]?.name || "Пользователь"}
             </span>
           </div>
         </Button>
