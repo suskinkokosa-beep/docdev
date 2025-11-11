@@ -22,13 +22,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 
+interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  isSystem: boolean;
+  createdAt: string;
+}
+
 interface User {
   id: string;
   username: string;
   fullName: string;
   email?: string;
   status: string;
-  roles?: string[];
+  roles?: Role[];
 }
 
 export function UsersPage() {
@@ -51,7 +59,7 @@ export function UsersPage() {
       user.username.toLowerCase().includes(query) ||
       user.fullName.toLowerCase().includes(query) ||
       user.email?.toLowerCase().includes(query) ||
-      user.roles?.some(role => role.toLowerCase().includes(query))
+      user.roles?.some(role => role.name.toLowerCase().includes(query))
     );
   });
 
@@ -137,7 +145,7 @@ export function UsersPage() {
                       </TableCell>
                       <TableCell>
                         {user.roles && user.roles.length > 0 ? (
-                          <Badge variant="outline">{user.roles[0]}</Badge>
+                          <Badge variant="outline">{user.roles[0].name}</Badge>
                         ) : (
                           <span className="text-muted-foreground text-sm">Нет роли</span>
                         )}

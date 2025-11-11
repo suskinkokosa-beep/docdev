@@ -51,7 +51,7 @@ export function RolesPage() {
     },
   });
 
-  const { data: rolePermissions = [], isLoading: rolePermissionsLoading } = useQuery<RolePermission>({
+  const { data: rolePermissions = { role: null, permissions: [] }, isLoading: rolePermissionsLoading } = useQuery<RolePermission>({
     queryKey: ['/api/roles', selectedRoleId],
     queryFn: async () => {
       if (!selectedRoleId) return { role: null, permissions: [] };
