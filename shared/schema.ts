@@ -87,7 +87,7 @@ export const services = pgTable("services", {
 export const departments = pgTable("departments", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   serviceId: varchar("service_id", { length: 36 }).notNull().references(() => services.id, { onDelete: 'cascade' }),
-  parentId: varchar("parent_id", { length: 36 }).references(() => departments.id, { onDelete: 'cascade' }),
+  parentId: varchar("parent_id", { length: 36 }),
   name: text("name").notNull(),
   code: text("code").notNull(),
   description: text("description"),
@@ -330,6 +330,7 @@ export const insertDepartmentSchema = createInsertSchema(departments).omit({ id:
 export const insertObjectSchema = createInsertSchema(objects).omit({ id: true, qrCode: true, createdAt: true, updatedAt: true });
 export const insertDocumentCategorySchema = createInsertSchema(documentCategories).omit({ id: true, createdAt: true });
 export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, code: true, version: true, createdAt: true, updatedAt: true });
+export const updateDocumentSchema = insertDocumentSchema.partial().extend({ version: z.number().optional() });
 export const insertTrainingProgramSchema = createInsertSchema(trainingPrograms).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTrainingProgressSchema = createInsertSchema(trainingProgress).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
@@ -360,6 +361,7 @@ export type InsertDocumentCategory = z.infer<typeof insertDocumentCategorySchema
 export type DocumentCategory = typeof documentCategories.$inferSelect;
 
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type UpdateDocument = z.infer<typeof updateDocumentSchema>;
 export type Document = typeof documents.$inferSelect;
 
 export type InsertTrainingProgram = z.infer<typeof insertTrainingProgramSchema>;
