@@ -1,0 +1,173 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Plus, Search, MoreVertical } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
+
+interface User {
+  id: string;
+  username: string;
+  fullName: string;
+  email?: string;
+  status: string;
+  roles?: string[];
+}
+
+export function UsersPage() {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const { data: users = [], isLoading } = useQuery<User[]>({
+    queryKey: ['/api/users'],
+    queryFn: async () => {
+      const response = await fetch('/api/users', {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch users');
+      return response.json();
+    },
+  });
+
+  const filteredUsers = users.filter((user) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      user.username.toLowerCase().includes(query) ||
+      user.fullName.toLowerCase().includes(query) ||
+      user.email?.toLowerCase().includes(query) ||
+      user.roles?.some(role => role.toLowerCase().includes(query))
+    );
+  });
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
+        return <Badge variant="default">Активен</Badge>;
+      case 'inactive':
+        return <Badge variant="secondary">Неактивен</Badge>;
+      case 'suspended':
+        return <Badge variant="destructive">Заблокирован</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Пользователи</h1>
+          <p className="text-muted-foreground">Управление пользователями системы</p>
+        </div>
+        <Button data-testid="button-add-user">
+          <Plus className="mr-2 h-4 w-4" />
+          Добавить пользователя
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Поиск пользователей..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              data-testid="input-search-users"
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Пользователь</TableHead>
+                  <TableHead>Роль</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Статус</TableHead>
+                  <TableHead className="text-right">Действия</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      {searchQuery ? 'Пользователи не найдены' : 'Нет пользователей'}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback>
+                              {user.fullName.split(" ").map(n => n[0]).join("").toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <span className="font-medium">{user.fullName}</span>
+                            <p className="text-xs text-muted-foreground">{user.username}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {user.roles && user.roles.length > 0 ? (
+                          <Badge variant="outline">{user.roles[0]}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Нет роли</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{user.email || '-'}</TableCell>
+                      <TableCell>{getStatusBadge(user.status)}</TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" data-testid={`button-menu-${user.id}`}>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem>Редактировать</DropdownMenuItem>
+                            <DropdownMenuItem>Права доступа</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive">
+                              {user.status === 'active' ? 'Деактивировать' : 'Активировать'}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
