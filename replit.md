@@ -67,7 +67,9 @@ The database includes tables for:
 - Training Programs, Tests, Questions, User Progress, Certificates
 - Audit Logs
 
-## Recent Changes (Fresh Import - November 11, 2025)
+## Recent Changes (November 11, 2025)
+
+### Initial Setup
 - ✅ Fresh clone from GitHub successfully imported
 - ✅ All dependencies installed (npm install)
 - ✅ Vite configured for Replit proxy (allowedHosts: true added)
@@ -76,7 +78,34 @@ The database includes tables for:
 - ✅ Workflow configured on port 5000 (dev-server)
 - ✅ Deployment configured (autoscale mode with build and run commands)
 - ✅ Application fully functional and ready to use
-- ✅ Login page verified working
+
+### Feature Implementation
+- ✅ **ProfilePage** (/profile): Просмотр информации пользователя и смена пароля
+  - API: GET /api/users/me, PATCH /api/users/me/password
+  - Исправлено использование roles массива вместо role объекта
+  
+- ✅ **Organizational Structure CRUD**: Полное управление УМГ, Службами и Подразделениями
+  - API: POST/PATCH/DELETE для /api/umg, /api/services, /api/departments
+  - Диалоги создания/редактирования/удаления с валидацией
+  - Иерархическая структура с родительскими элементами
+  
+- ✅ **Audit Log Filtering & Export**: Фильтрация журнала аудита и экспорт CSV
+  - API: GET /api/audit/export
+  - Фильтры: пользователь, действие, ресурс, статус, даты
+  - Обновлен storage.getAuditLogs с join users таблицы
+  
+- ✅ **Training Programs Management**: Управление программами обучения
+  - API: POST/PUT/DELETE /api/training/:id
+  - Storage: insertTrainingProgram, updateTrainingProgram, deleteTrainingProgram
+  - Создание, редактирование, удаление программ с видео и тестами
+  - TrainingProgramDialog с useEffect для синхронизации formData
+  - Dropdown меню с edit/delete и AlertDialog для подтверждения удаления
+
+### Bug Fixes
+- ✅ Исправлены все кнопки без event handlers
+- ✅ Исправлены все useQuery вызовы - добавлены queryFn
+- ✅ Исправлены пустые SelectItem values (использование "all"/"none" sentinel values)
+- ✅ Исправлена структура данных ProfilePage для работы с массивом roles
 
 ## Notes
 - The application is in Russian language
