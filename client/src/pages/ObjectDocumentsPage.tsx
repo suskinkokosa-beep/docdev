@@ -1,0 +1,175 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useRoute } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Search, FileText, Eye, Download } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDistanceToNow } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { DocumentViewer } from "@/components/DocumentViewer";
+
+interface Document {
+  id: string;
+  code: string;
+  name: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  categoryId: string;
+  updatedAt: string;
+  filePath?: string;
+  category?: { name: string };
+}
+
+interface PipelineObject {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+}
+
+export function ObjectDocumentsPage() {
+  const [, params] = useRoute("/objects/:id/documents");
+  const objectId = params?.id;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+
+  const { data: object } = useQuery<PipelineObject>({
+    queryKey: [`/api/objects/${objectId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/objects/${objectId}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch object');
+      return response.json();
+    },
+    enabled: !!objectId,
+  });
+
+  const { data: documents = [], isLoading } = useQuery<Document[]>({
+    queryKey: [`/api/objects/${objectId}/documents`],
+    queryFn: async () => {
+      const response = await fetch(`/api/objects/${objectId}/documents`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch documents');
+      return response.json();
+    },
+    enabled: !!objectId,
+  });
+
+  const filteredDocuments = documents.filter((doc) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      doc.code.toLowerCase().includes(query) ||
+      doc.name.toLowerCase().includes(query) ||
+      doc.fileName.toLowerCase().includes(query)
+    );
+  });
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => window.history.back()}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div>
+          <h1 className="text-2xl font-semibold">
+            Документы объекта: {object?.name || '...'}
+          </h1>
+          <p className="text-muted-foreground">
+            {object?.code} - {object?.type}
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Поиск документов..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-48 w-full" />
+              ))}
+            </div>
+          ) : filteredDocuments.length === 0 ? (
+            <div className="text-center text-muted-foreground py-12">
+              {searchQuery ? 'Документы не найдены' : 'Нет документов для этого объекта'}
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {filteredDocuments.map((doc) => (
+                <Card key={doc.id} className="hover-elevate cursor-pointer">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <FileText className="h-10 w-10 text-primary" />
+                      <Badge variant="secondary">{doc.category?.name || 'Без категории'}</Badge>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-sm line-clamp-2">{doc.name}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">{formatFileSize(doc.fileSize)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true, locale: ru })}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="flex-1"
+                        onClick={() => {
+                          setSelectedDocument(doc);
+                          setViewerOpen(true);
+                        }}
+                      >
+                        <Eye className="mr-1 h-3 w-3" />
+                        Просмотр
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          window.open(`/api/documents/${doc.id}/download`, '_blank');
+                        }}
+                      >
+                        <Download className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <DocumentViewer
+        document={selectedDocument}
+        isOpen={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+      />
+    </div>
+  );
+}

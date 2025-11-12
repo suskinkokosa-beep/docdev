@@ -1,70 +1,29 @@
-import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-
-const defaultSettings = {
-  systemName: "УправДок",
-  maxUpload: "100",
-  backup: true,
-  twoFactor: false,
-  sessionTimeout: "30",
-  auditLog: true,
-  emailNotif: true,
-  docUpdate: true,
-  newUser: false,
-  smtp: "",
-  ldap: "",
-};
+import { useSettings } from "@/contexts/SettingsContext";
 
 export function SettingsPage() {
   const { toast } = useToast();
-  const [settings, setSettings] = useState(defaultSettings);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('app-settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setSettings({ ...defaultSettings, ...parsed });
-      }
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-    }
-  }, []);
+  const { settings, updateSettings } = useSettings();
 
   const handleSave = () => {
-    localStorage.setItem('app-settings', JSON.stringify(settings));
+    updateSettings(settings);
     toast({
       title: "Успешно",
-      description: "Настройки сохранены",
+      description: "Настройки сохранены. Обновите страницу для применения изменений.",
     });
   };
 
   const handleCancel = () => {
-    try {
-      const saved = localStorage.getItem('app-settings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setSettings({ ...defaultSettings, ...parsed });
-      } else {
-        setSettings(defaultSettings);
-      }
-      toast({
-        title: "Отменено",
-        description: "Изменения отменены",
-      });
-    } catch (error) {
-      console.error('Failed to reset settings:', error);
-      setSettings(defaultSettings);
-    }
+    window.location.reload();
   };
 
   const handleChange = (key: string, value: any) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+    updateSettings({ ...settings, [key]: value });
   };
 
   return (
