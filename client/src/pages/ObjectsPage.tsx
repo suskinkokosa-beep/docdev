@@ -151,7 +151,19 @@ export function ObjectsPage() {
                           >
                             <QrCode className="h-4 w-4" />
                           </Button>
-                          <Button size="icon" variant="ghost" data-testid={`button-download-${obj.id}`}>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            data-testid={`button-download-${obj.id}`}
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = `/api/objects/${obj.id}/export`;
+                              link.download = `object-${obj.code}.pdf`;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                          >
                             <Download className="h-4 w-4" />
                           </Button>
                         </div>

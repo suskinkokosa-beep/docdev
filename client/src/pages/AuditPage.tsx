@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Download, Search, Filter } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatDistanceToNow } from 'date-fns';
-import { ru } from 'date-fns/locale';
+import { useToast } from "@/hooks/use-toast";
+import { formatDistanceToNow } from "date-fns";
+import { ru } from "date-fns/locale";
+import { AuditFiltersPanel, type AuditFilters } from "@/components/AuditFilters";
 
 interface AuditLog {
   id: string;
@@ -30,19 +32,46 @@ interface AuditLog {
 
 export function AuditPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<AuditFilters>({});
+  const { toast } = useToast();
+
+  const buildQueryString = () => {
+    const params = new URLSearchParams();
+    params.append("limit", "100");
+    
+    if (filters.action) params.append("action", filters.action);
+    if (filters.resource) params.append("resource", filters.resource);
+    if (filters.userId) params.append("userId", filters.userId);
+    if (filters.success) params.append("success", filters.success);
+    if (filters.dateFrom) params.append("dateFrom", filters.dateFrom);
+    if (filters.dateTo) params.append("dateTo", filters.dateTo);
+    
+    return params.toString();
+  };
 
   const { data: auditLogs = [], isLoading } = useQuery<AuditLog[]>({
-    queryKey: ['/api/audit'],
+    queryKey: ["/api/audit", buildQueryString()],
     queryFn: async () => {
-      const response = await fetch('/api/audit?limit=100', {
-        credentials: 'include',
+      const response = await fetch(`/api/audit?${buildQueryString()}`, {
+        credentials: "include",
       });
-      if (!response.ok) throw new Error('Failed to fetch audit logs');
+      if (!response.ok) throw new Error("Failed to fetch audit logs");
+      return response.json();
+    },
+  });
+
+  const { data: users = [] } = useQuery<Array<{ id: string; username: string; fullName: string }>>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const response = await fetch("/api/users", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch users");
       return response.json();
     },
   });
 
   const filteredLogs = auditLogs.filter((log) => {
+    if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
       log.user?.fullName.toLowerCase().includes(query) ||
@@ -53,25 +82,56 @@ export function AuditPage() {
     );
   });
 
+  const handleExport = async () => {
+    try {
+      const response = await fetch(`/api/audit/export?${buildQueryString()}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Ошибка экспорта");
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-log-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Успешно",
+        description: "Журнал экспортирован",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось экспортировать журнал",
+      });
+    }
+  };
+
   const getActionText = (action: string, resource: string) => {
     const actions: Record<string, string> = {
-      create: 'создал',
-      read: 'просмотрел',
-      update: 'обновил',
-      delete: 'удалил',
-      upload: 'загрузил',
-      download: 'скачал',
-      login: 'вошел в систему',
-      logout: 'вышел из системы',
+      create: "создал",
+      read: "просмотрел",
+      update: "обновил",
+      delete: "удалил",
+      upload: "загрузил",
+      download: "скачал",
+      login: "вошел в систему",
+      logout: "вышел из системы",
     };
     const resources: Record<string, string> = {
-      document: 'документ',
-      object: 'объект',
-      user: 'пользователя',
-      auth: 'систему',
+      document: "документ",
+      object: "объект",
+      user: "пользователя",
+      auth: "систему",
+      password: "пароль",
     };
     return `${actions[action] || action} ${resources[resource] || resource}`;
   };
+
+  const hasActiveFilters = Object.values(filters).some((v) => v !== undefined && v !== "");
 
   return (
     <div className="space-y-6">
@@ -81,11 +141,20 @@ export function AuditPage() {
           <p className="text-muted-foreground">Детальный журнал всех действий в системе</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" data-testid="button-filter">
+          <Button
+            variant="outline"
+            data-testid="button-filter"
+            onClick={() => setShowFilters(true)}
+          >
             <Filter className="mr-2 h-4 w-4" />
             Фильтры
+            {hasActiveFilters && (
+              <Badge variant="secondary" className="ml-2">
+                {Object.values(filters).filter((v) => v !== undefined && v !== "").length}
+              </Badge>
+            )}
           </Button>
-          <Button data-testid="button-export">
+          <Button data-testid="button-export" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Экспорт
           </Button>
@@ -114,7 +183,7 @@ export function AuditPage() {
             </div>
           ) : filteredLogs.length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              {searchQuery ? 'Записи не найдены' : 'Нет записей в журнале'}
+              {searchQuery || hasActiveFilters ? "Записи не найдены" : "Нет записей в журнале"}
             </div>
           ) : (
             <div className="space-y-4">
@@ -127,7 +196,7 @@ export function AuditPage() {
                   <div className="relative">
                     <div
                       className="absolute left-1/2 top-8 bottom-0 w-px bg-border"
-                      style={{ display: index === filteredLogs.length - 1 ? 'none' : 'block' }}
+                      style={{ display: index === filteredLogs.length - 1 ? "none" : "block" }}
                     />
                     <Avatar className="h-10 w-10">
                       <AvatarFallback>
@@ -137,7 +206,7 @@ export function AuditPage() {
                               .map((n) => n[0])
                               .join("")
                               .toUpperCase()
-                          : 'S'}
+                          : "S"}
                       </AvatarFallback>
                     </Avatar>
                   </div>
@@ -145,7 +214,7 @@ export function AuditPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <p className="font-medium">
-                          {log.user?.fullName || log.user?.username || 'Система'}
+                          {log.user?.fullName || log.user?.username || "Система"}
                         </p>
                         <p className="text-sm text-muted-foreground">
                           {getActionText(log.action, log.resource)}
@@ -173,6 +242,14 @@ export function AuditPage() {
           )}
         </CardContent>
       </Card>
+
+      <AuditFiltersPanel
+        isOpen={showFilters}
+        onClose={() => setShowFilters(false)}
+        filters={filters}
+        onApplyFilters={setFilters}
+        users={users}
+      />
     </div>
   );
 }

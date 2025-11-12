@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { DocumentUploadDialog } from "@/components/DocumentUploadDialog";
+import { DocumentViewer } from "@/components/DocumentViewer";
 
 interface Document {
   id: string;
@@ -19,12 +20,15 @@ interface Document {
   mimeType: string;
   categoryId: string;
   updatedAt: string;
+  filePath?: string;
   category?: { name: string };
 }
 
 export function DocumentsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ['/api/documents'],
@@ -111,7 +115,16 @@ export function DocumentsPage() {
                       </p>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="flex-1" data-testid={`button-view-${doc.id}`}>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="flex-1" 
+                        data-testid={`button-view-${doc.id}`}
+                        onClick={() => {
+                          setSelectedDocument(doc);
+                          setViewerOpen(true);
+                        }}
+                      >
                         <Eye className="mr-1 h-3 w-3" />
                         Просмотр
                       </Button>
@@ -137,6 +150,12 @@ export function DocumentsPage() {
       <DocumentUploadDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+      />
+
+      <DocumentViewer
+        document={selectedDocument}
+        isOpen={viewerOpen}
+        onClose={() => setViewerOpen(false)}
       />
     </div>
   );

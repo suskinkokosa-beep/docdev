@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserFormDialog } from "@/components/UserFormDialog";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface Role {
   id: string;
@@ -45,6 +47,8 @@ export function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | undefined>(undefined);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/users'],
@@ -66,6 +70,48 @@ export function UsersPage() {
       user.roles?.some(role => role.name.toLowerCase().includes(query))
     );
   });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ userId, newStatus }: { userId: string; newStatus: string }) => {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка изменения статуса');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: "Успешно",
+        description: "Статус пользователя изменен",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Ошибка",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleToggleStatus = (user: User) => {
+    const newStatus = user.status === 'active' ? 'inactive' : 'active';
+    toggleStatusMutation.mutate({ userId: user.id, newStatus });
+  };
+
+  const handleManagePermissions = (user: User) => {
+    toast({
+      title: "В разработке",
+      description: "Функция управления правами доступа в разработке",
+    });
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -178,8 +224,13 @@ export function UsersPage() {
                             }}>
                               Редактировать
                             </DropdownMenuItem>
-                            <DropdownMenuItem>Права доступа</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem onClick={() => handleManagePermissions(user)}>
+                              Права доступа
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-destructive"
+                              onClick={() => handleToggleStatus(user)}
+                            >
                               {user.status === 'active' ? 'Деактивировать' : 'Активировать'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>

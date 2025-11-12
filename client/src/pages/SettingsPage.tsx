@@ -44,6 +44,25 @@ export function SettingsPage() {
     });
   };
 
+  const handleCancel = () => {
+    try {
+      const saved = localStorage.getItem('app-settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setSettings({ ...defaultSettings, ...parsed });
+      } else {
+        setSettings(defaultSettings);
+      }
+      toast({
+        title: "Отменено",
+        description: "Изменения отменены",
+      });
+    } catch (error) {
+      console.error('Failed to reset settings:', error);
+      setSettings(defaultSettings);
+    }
+  };
+
   const handleChange = (key: string, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
@@ -198,7 +217,7 @@ export function SettingsPage() {
       </div>
 
       <div className="flex justify-end gap-2">
-        <Button variant="outline">Отмена</Button>
+        <Button variant="outline" onClick={handleCancel}>Отмена</Button>
         <Button onClick={handleSave} data-testid="button-save-settings">Сохранить настройки</Button>
       </div>
     </div>
