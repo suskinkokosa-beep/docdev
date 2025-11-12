@@ -3,6 +3,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SettingsProvider } from "./contexts/SettingsContext";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -18,6 +19,7 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { CertificatesPage } from "./pages/CertificatesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { ObjectsMapPage } from "./pages/ObjectsMapPage";
+import { ObjectDocumentsPage } from "./pages/ObjectDocumentsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 
@@ -116,6 +118,13 @@ function Router() {
           </DashboardLayout>
         </ProtectedRoute>
       </Route>
+      <Route path="/objects/:id/documents">
+        <ProtectedRoute>
+          <DashboardLayout>
+            <ObjectDocumentsPage />
+          </DashboardLayout>
+        </ProtectedRoute>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -124,10 +133,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <SettingsProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </SettingsProvider>
     </QueryClientProvider>
   );
 }
