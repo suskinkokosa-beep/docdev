@@ -53,6 +53,14 @@ export function UserMenu() {
     }
   }, [userData]);
 
+  const handleProfile = () => {
+    setLocation("/profile");
+  };
+
+  const handleSettings = () => {
+    setLocation("/settings");
+  };
+
   const handleLogout = async () => {
     try {
       await fetch("/api/auth/logout", {
@@ -98,11 +106,11 @@ export function UserMenu() {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Мой аккаунт</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem data-testid="menu-profile">
+        <DropdownMenuItem data-testid="menu-profile" onClick={handleProfile}>
           <User className="mr-2 h-4 w-4" />
           Профиль
         </DropdownMenuItem>
-        <DropdownMenuItem data-testid="menu-settings">
+        <DropdownMenuItem data-testid="menu-settings" onClick={handleSettings}>
           <Settings className="mr-2 h-4 w-4" />
           Настройки
         </DropdownMenuItem>

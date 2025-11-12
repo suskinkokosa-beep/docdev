@@ -8,7 +8,7 @@ interface DocumentViewerProps {
     name: string;
     fileName: string;
     mimeType: string;
-    filePath: string;
+    filePath?: string;
   } | null;
   isOpen: boolean;
   onClose: () => void;
