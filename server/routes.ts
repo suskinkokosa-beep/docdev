@@ -605,6 +605,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/objects/:id/documents', isAuthenticated, async (req, res) => {
+    try {
+      const object = await storage.getObjectById(req.params.id);
+      if (!object) {
+        return res.status(404).json({ error: 'Объект не найден' });
+      }
+      const documents = await storage.getDocumentsByObjectId(req.params.id);
+      res.json(documents);
+    } catch (error) {
+      res.status(500).json({ error: 'Ошибка при получении документов объекта' });
+    }
+  });
+
   app.get('/api/objects/qr/:qrCode', isAuthenticated, async (req, res) => {
     try {
       const object = await storage.getObjectByQrCode(req.params.qrCode);
@@ -783,6 +796,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })() : null,
         uploadedBy: (req.user as any).id
       });
+      
+      if (req.body.serviceIds) {
+        try {
+          const serviceIds = JSON.parse(req.body.serviceIds);
+          if (Array.isArray(serviceIds) && serviceIds.length > 0) {
+            await storage.insertDocumentServices(document.id, serviceIds);
+          }
+        } catch (error) {
+          console.error('Error parsing serviceIds:', error);
+        }
+      }
+      
       await storage.insertAuditLog({
         userId: (req.user as any).id,
         action: 'upload',

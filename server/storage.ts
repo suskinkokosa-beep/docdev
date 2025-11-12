@@ -330,10 +330,25 @@ export const storage = {
     return doc;
   },
 
+  async getDocumentsByObjectId(objectId: string) {
+    return await db.select().from(documents).where(eq(documents.objectId, objectId));
+  },
+
   async insertDocument(data: InsertDocument) {
     const code = `DOC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const [doc] = await db.insert(documents).values({ ...data, code }).returning();
     return doc;
+  },
+
+  async insertDocumentServices(documentId: string, serviceIds: string[]) {
+    const values = serviceIds.map(serviceId => ({
+      documentId,
+      serviceId,
+      canView: true,
+      canEdit: false,
+      canDelete: false
+    }));
+    await db.insert(documentServices).values(values);
   },
 
   async updateDocument(id: string, data: UpdateDocument) {
