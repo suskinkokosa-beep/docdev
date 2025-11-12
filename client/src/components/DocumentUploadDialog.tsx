@@ -29,6 +29,9 @@ const documentFormSchema = z.object({
   name: z.string().min(1, "Обязательное поле"),
   code: z.string().min(1, "Обязательное поле"),
   categoryId: z.string().min(1, "Выберите категорию"),
+  objectId: z.string().optional(),
+  umgId: z.string().min(1, "Выберите УМГ"),
+  serviceIds: z.array(z.string()).optional(),
   description: z.string().optional(),
   version: z.string().default("1.0"),
 });
@@ -39,6 +42,26 @@ interface Category {
   id: string;
   name: string;
   code: string;
+}
+
+interface PipelineObject {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+}
+
+interface Umg {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface Service {
+  id: string;
+  name: string;
+  code: string;
+  umgId: string;
 }
 
 interface DocumentUploadDialogProps {
@@ -60,6 +83,33 @@ export function DocumentUploadDialog({ open, onOpenChange }: DocumentUploadDialo
     },
   });
 
+  const { data: objects = [] } = useQuery<PipelineObject[]>({
+    queryKey: ['/api/objects'],
+    queryFn: async () => {
+      const response = await fetch('/api/objects', { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch objects');
+      return response.json();
+    },
+  });
+
+  const { data: umgs = [] } = useQuery<Umg[]>({
+    queryKey: ['/api/umg'],
+    queryFn: async () => {
+      const response = await fetch('/api/umg', { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch UMGs');
+      return response.json();
+    },
+  });
+
+  const { data: services = [] } = useQuery<Service[]>({
+    queryKey: ['/api/services'],
+    queryFn: async () => {
+      const response = await fetch('/api/services', { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch services');
+      return response.json();
+    },
+  });
+
   const {
     register,
     handleSubmit,
@@ -73,8 +123,14 @@ export function DocumentUploadDialog({ open, onOpenChange }: DocumentUploadDialo
     defaultValues: {
       version: "1.0",
       categoryId: "",
+      objectId: "",
+      umgId: "",
+      serviceIds: [],
     },
   });
+
+  const selectedUmgId = watch("umgId");
+  const filteredServices = services.filter(s => s.umgId === selectedUmgId);
 
   const uploadMutation = useMutation({
     mutationFn: async (data: DocumentFormData) => {
@@ -87,12 +143,19 @@ export function DocumentUploadDialog({ open, onOpenChange }: DocumentUploadDialo
       formData.append('name', data.name);
       formData.append('code', data.code);
       formData.append('categoryId', data.categoryId);
+      formData.append('umgId', data.umgId);
       formData.append('version', data.version);
+      if (data.objectId) {
+        formData.append('objectId', data.objectId);
+      }
+      if (data.serviceIds && data.serviceIds.length > 0) {
+        formData.append('serviceIds', JSON.stringify(data.serviceIds));
+      }
       if (data.description) {
         formData.append('description', data.description);
       }
 
-      const response = await fetch('/api/documents', {
+      const response = await fetch('/api/documents/upload', {
         method: 'POST',
         credentials: 'include',
         body: formData,
@@ -196,31 +259,87 @@ export function DocumentUploadDialog({ open, onOpenChange }: DocumentUploadDialo
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="categoryId">Категория *</Label>
+            <Label htmlFor="umgId">УМГ *</Label>
             <Controller
               control={control}
-              name="categoryId"
+              name="umgId"
               render={({ field }) => (
                 <Select 
                   value={field.value} 
                   onValueChange={field.onChange}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Выберите категорию" />
+                    <SelectValue placeholder="Выберите УМГ" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.name}
+                    {umgs.map((umg) => (
+                      <SelectItem key={umg.id} value={umg.id}>
+                        {umg.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
             />
-            {errors.categoryId && (
-              <p className="text-sm text-destructive">{errors.categoryId.message}</p>
+            {errors.umgId && (
+              <p className="text-sm text-destructive">{errors.umgId.message}</p>
             )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="objectId">Объект (опционально)</Label>
+              <Controller
+                control={control}
+                name="objectId"
+                render={({ field }) => (
+                  <Select 
+                    value={field.value || "none"} 
+                    onValueChange={(value) => field.onChange(value === "none" ? "" : value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите объект" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Без объекта</SelectItem>
+                      {objects.map((obj) => (
+                        <SelectItem key={obj.id} value={obj.id}>
+                          {obj.code} - {obj.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="categoryId">Категория *</Label>
+              <Controller
+                control={control}
+                name="categoryId"
+                render={({ field }) => (
+                  <Select 
+                    value={field.value} 
+                    onValueChange={field.onChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите категорию" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.categoryId && (
+                <p className="text-sm text-destructive">{errors.categoryId.message}</p>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -232,6 +351,38 @@ export function DocumentUploadDialog({ open, onOpenChange }: DocumentUploadDialo
               rows={3}
             />
           </div>
+
+          {selectedUmgId && filteredServices.length > 0 && (
+            <div className="space-y-2">
+              <Label>Доступ для служб (опционально)</Label>
+              <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
+                {filteredServices.map((service) => (
+                  <div key={service.id} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id={`service-${service.id}`}
+                      value={service.id}
+                      onChange={(e) => {
+                        const currentIds = watch("serviceIds") || [];
+                        if (e.target.checked) {
+                          setValue("serviceIds", [...currentIds, service.id]);
+                        } else {
+                          setValue("serviceIds", currentIds.filter(id => id !== service.id));
+                        }
+                      }}
+                      className="rounded border-gray-300"
+                    />
+                    <Label htmlFor={`service-${service.id}`} className="text-sm font-normal cursor-pointer">
+                      {service.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Если не выбрано ни одной службы, документ будет доступен всем службам данного УМГ
+              </p>
+            </div>
+          )}
 
           <DialogFooter>
             <Button

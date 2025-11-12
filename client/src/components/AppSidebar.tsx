@@ -21,6 +21,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { useLocation } from "wouter";
+import { useSettings } from "@/contexts/SettingsContext";
 
 const menuItems = [
   {
@@ -72,6 +73,7 @@ const menuItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { settings } = useSettings();
 
   return (
     <Sidebar>
@@ -79,7 +81,7 @@ export function AppSidebar() {
         <div className="flex items-center gap-2">
           <Building2 className="h-6 w-6 text-primary" />
           <div>
-            <h2 className="text-sm font-semibold">УправДок</h2>
+            <h2 className="text-sm font-semibold">{settings.systemName}</h2>
             <p className="text-xs text-muted-foreground">Газопроводы</p>
           </div>
         </div>
