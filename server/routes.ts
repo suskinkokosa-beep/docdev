@@ -224,6 +224,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  app.patch('/api/users/me/password', isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Необходимо указать текущий и новый пароль' });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'Новый пароль должен содержать минимум 6 символов' });
+      }
+
+      const result = await storage.updateUserPassword(userId, currentPassword, newPassword);
+      
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      await storage.insertAuditLog({
+        userId,
+        action: 'update',
+        resource: 'password',
+        resourceId: userId,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent')
+      });
+
+      res.json({ success: true, message: 'Пароль успешно изменен' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Ошибка при изменении пароля' });
+    }
+  });
+
   // ========== USERS ROUTES ==========
   app.get('/api/users', isAuthenticated, hasPermission('users', 'view'), async (req, res) => {
     try {
@@ -855,6 +889,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put('/api/training/:id', isAuthenticated, hasPermission('training', 'edit'), async (req, res) => {
+    try {
+      const program = await storage.updateTrainingProgram(req.params.id, req.body);
+      res.json(program);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/training/:id', isAuthenticated, hasPermission('training', 'delete'), async (req, res) => {
+    try {
+      await storage.deleteTrainingProgram(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.put('/api/training/:programId/progress', isAuthenticated, async (req, res) => {
     try {
       const progress = await storage.updateTrainingProgress(
@@ -873,12 +925,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const logs = await storage.getAuditLogs({
         userId: req.query.userId as string,
+        action: req.query.action as string,
         resource: req.query.resource as string,
+        success: req.query.success === 'true' ? true : req.query.success === 'false' ? false : undefined,
+        dateFrom: req.query.dateFrom as string,
+        dateTo: req.query.dateTo as string,
         limit: req.query.limit ? parseInt(req.query.limit as string) : 100
       });
       res.json(logs);
     } catch (error) {
       res.status(500).json({ error: 'Ошибка при получении логов' });
+    }
+  });
+
+  app.get('/api/audit/export', isAuthenticated, hasPermission('audit', 'view'), async (req, res) => {
+    try {
+      const logs = await storage.getAuditLogs({
+        userId: req.query.userId as string,
+        action: req.query.action as string,
+        resource: req.query.resource as string,
+        success: req.query.success === 'true' ? true : req.query.success === 'false' ? false : undefined,
+        dateFrom: req.query.dateFrom as string,
+        dateTo: req.query.dateTo as string,
+        limit: 10000
+      });
+
+      const csvRows = [
+        ['Дата', 'Пользователь', 'Действие', 'Ресурс', 'ID ресурса', 'Статус', 'IP адрес'].join(','),
+        ...logs.map(log => [
+          new Date(log.createdAt).toLocaleString('ru-RU'),
+          log.user?.fullName || log.user?.username || 'Система',
+          log.action,
+          log.resource,
+          log.resourceId || '',
+          log.success ? 'Успешно' : 'Ошибка',
+          log.ipAddress || ''
+        ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
+      ];
+
+      const csv = csvRows.join('\n');
+      const bom = '\uFEFF';
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="audit-log-${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(bom + csv);
+    } catch (error) {
+      res.status(500).json({ error: 'Ошибка при экспорте логов' });
     }
   });
 

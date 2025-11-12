@@ -65,6 +65,25 @@ export const storage = {
     return await bcrypt.compare(password, user.password);
   },
 
+  async updateUserPassword(userId: string, currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+    const user = await this.getUserById(userId);
+    if (!user) {
+      return { success: false, error: "Пользователь не найден" };
+    }
+
+    const isPasswordValid = await this.verifyPassword(user, currentPassword);
+    if (!isPasswordValid) {
+      return { success: false, error: "Неверный текущий пароль" };
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.update(users)
+      .set({ password: hashedPassword, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+
+    return { success: true };
+  },
+
   // ========== Roles ==========
   async getAllRoles() {
     return await db.select().from(roles);
@@ -354,6 +373,18 @@ export const storage = {
     return program;
   },
 
+  async updateTrainingProgram(id: string, data: Partial<InsertTrainingProgram>) {
+    const [program] = await db.update(trainingPrograms)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(trainingPrograms.id, id))
+      .returning();
+    return program;
+  },
+
+  async deleteTrainingProgram(id: string) {
+    await db.delete(trainingPrograms).where(eq(trainingPrograms.id, id));
+  },
+
   async getUserTrainingProgress(userId: string, programId: string) {
     const [progress] = await db.select()
       .from(trainingProgress)
@@ -391,14 +422,58 @@ export const storage = {
     return log;
   },
 
-  async getAuditLogs(filters?: { userId?: string; resource?: string; action?: string; limit?: number }) {
-    let query = db.select().from(auditLogs);
+  async getAuditLogs(filters?: { 
+    userId?: string; 
+    resource?: string; 
+    action?: string; 
+    success?: boolean;
+    dateFrom?: string;
+    dateTo?: string;
+    limit?: number 
+  }) {
+    let query = db.select({
+      id: auditLogs.id,
+      userId: auditLogs.userId,
+      action: auditLogs.action,
+      resource: auditLogs.resource,
+      resourceId: auditLogs.resourceId,
+      details: auditLogs.details,
+      ipAddress: auditLogs.ipAddress,
+      userAgent: auditLogs.userAgent,
+      success: auditLogs.success,
+      createdAt: auditLogs.createdAt,
+      user: {
+        id: users.id,
+        username: users.username,
+        fullName: users.fullName,
+      }
+    })
+    .from(auditLogs)
+    .leftJoin(users, eq(auditLogs.userId, users.id));
+    
+    const conditions = [];
     
     if (filters?.userId) {
-      query = query.where(eq(auditLogs.userId, filters.userId)) as any;
+      conditions.push(eq(auditLogs.userId, filters.userId));
     }
     if (filters?.resource) {
-      query = query.where(eq(auditLogs.resource, filters.resource)) as any;
+      conditions.push(eq(auditLogs.resource, filters.resource));
+    }
+    if (filters?.action) {
+      conditions.push(eq(auditLogs.action, filters.action as any));
+    }
+    if (filters?.success !== undefined) {
+      conditions.push(eq(auditLogs.success, filters.success));
+    }
+    if (filters?.dateFrom) {
+      conditions.push(sql`${auditLogs.createdAt} >= ${filters.dateFrom}`);
+    }
+    if (filters?.dateTo) {
+      conditions.push(sql`${auditLogs.createdAt} <= ${filters.dateTo}`);
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
     }
     
     const logs = await query.orderBy(sql`${auditLogs.createdAt} DESC`).limit(filters?.limit || 100);
