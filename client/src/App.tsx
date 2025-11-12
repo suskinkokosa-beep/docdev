@@ -14,6 +14,7 @@ import { RolesPage } from "./pages/RolesPage";
 import { TrainingPage } from "./pages/TrainingPage";
 import { AuditPage } from "./pages/AuditPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { CertificatesPage } from "./pages/CertificatesPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { ObjectsMapPage } from "./pages/ObjectsMapPage";
@@ -84,6 +85,13 @@ function Router() {
         <ProtectedRoute>
           <DashboardLayout>
             <SettingsPage />
+          </DashboardLayout>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute>
+          <DashboardLayout>
+            <ProfilePage />
           </DashboardLayout>
         </ProtectedRoute>
       </Route>
