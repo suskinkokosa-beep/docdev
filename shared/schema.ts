@@ -7,7 +7,8 @@ import {
   integer, 
   boolean,
   jsonb,
-  pgEnum
+  pgEnum,
+  uniqueIndex
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -48,7 +49,9 @@ export const permissions = pgTable("permissions", {
   module: text("module").notNull(), // users, objects, documents, etc.
   action: text("action").notNull(), // view, create, edit, delete
   description: text("description"),
-});
+}, (table) => ({
+  moduleActionUnique: uniqueIndex('permissions_module_action_unique').on(table.module, table.action),
+}));
 
 // Role-Permission junction
 export const rolePermissions = pgTable("role_permissions", {
@@ -142,7 +145,7 @@ export const documents = pgTable("documents", {
   umgId: varchar("umg_id", { length: 36 }).notNull().references(() => umg.id, { onDelete: 'restrict' }),
   tags: text("tags").array(),
   metadata: jsonb("metadata"),
-  uploadedBy: varchar("uploaded_by", { length: 36 }).notNull().references(() => users.id, { onDelete: 'restrict' }),
+  uploadedBy: varchar("uploaded_by", { length: 36 }).references(() => users.id, { onDelete: 'set null' }),
   version: integer("version").default(1).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -168,7 +171,7 @@ export const trainingPrograms = pgTable("training_programs", {
   materials: jsonb("materials"), // дополнительные материалы
   umgId: varchar("umg_id", { length: 36 }).references(() => umg.id, { onDelete: 'set null' }),
   serviceId: varchar("service_id", { length: 36 }).references(() => services.id, { onDelete: 'set null' }),
-  createdBy: varchar("created_by", { length: 36 }).notNull().references(() => users.id, { onDelete: 'restrict' }),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -252,7 +255,7 @@ export const documentVersions = pgTable("document_versions", {
   fileSize: integer("file_size").notNull(),
   mimeType: text("mime_type").notNull(),
   changes: text("changes"), // описание изменений
-  uploadedBy: varchar("uploaded_by", { length: 36 }).notNull().references(() => users.id, { onDelete: 'restrict' }),
+  uploadedBy: varchar("uploaded_by", { length: 36 }).references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -301,7 +304,7 @@ export const documentTemplates = pgTable("document_templates", {
   mimeType: text("mime_type").notNull(),
   variables: jsonb("variables"), // переменные в шаблоне [{ name: "objectName", label: "Название объекта", type: "text" }]
   isActive: boolean("is_active").default(true).notNull(),
-  createdBy: varchar("created_by", { length: 36 }).notNull().references(() => users.id, { onDelete: 'restrict' }),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
