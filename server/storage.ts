@@ -322,7 +322,31 @@ export const storage = {
 
   // ========== Documents ==========
   async getAllDocuments() {
-    return await db.select().from(documents);
+    return await db.select({
+      id: documents.id,
+      code: documents.code,
+      name: documents.name,
+      fileName: documents.fileName,
+      filePath: documents.filePath,
+      fileSize: documents.fileSize,
+      mimeType: documents.mimeType,
+      categoryId: documents.categoryId,
+      objectId: documents.objectId,
+      umgId: documents.umgId,
+      tags: documents.tags,
+      metadata: documents.metadata,
+      uploadedBy: documents.uploadedBy,
+      version: documents.version,
+      createdAt: documents.createdAt,
+      updatedAt: documents.updatedAt,
+      category: {
+        id: documentCategories.id,
+        name: documentCategories.name,
+        code: documentCategories.code,
+      }
+    })
+    .from(documents)
+    .leftJoin(documentCategories, eq(documents.categoryId, documentCategories.id));
   },
 
   async getDocumentById(id: string): Promise<Document | undefined> {
@@ -331,7 +355,32 @@ export const storage = {
   },
 
   async getDocumentsByObjectId(objectId: string) {
-    return await db.select().from(documents).where(eq(documents.objectId, objectId));
+    return await db.select({
+      id: documents.id,
+      code: documents.code,
+      name: documents.name,
+      fileName: documents.fileName,
+      filePath: documents.filePath,
+      fileSize: documents.fileSize,
+      mimeType: documents.mimeType,
+      categoryId: documents.categoryId,
+      objectId: documents.objectId,
+      umgId: documents.umgId,
+      tags: documents.tags,
+      metadata: documents.metadata,
+      uploadedBy: documents.uploadedBy,
+      version: documents.version,
+      createdAt: documents.createdAt,
+      updatedAt: documents.updatedAt,
+      category: {
+        id: documentCategories.id,
+        name: documentCategories.name,
+        code: documentCategories.code,
+      }
+    })
+    .from(documents)
+    .leftJoin(documentCategories, eq(documents.categoryId, documentCategories.id))
+    .where(eq(documents.objectId, objectId));
   },
 
   async insertDocument(data: InsertDocument) {

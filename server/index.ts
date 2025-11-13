@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import path from "path";
 
 const app = express();
 
@@ -35,7 +36,7 @@ app.use((req, res, next) => {
 // Защита от XSS
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
@@ -48,6 +49,10 @@ app.use(express.json({
   limit: '10mb' // Ограничение размера JSON
 }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+
+// Обслуживание загруженных файлов
+const uploadsPath = path.join(process.cwd(), 'uploads');
+app.use('/uploads', express.static(uploadsPath));
 
 app.use((req, res, next) => {
   const start = Date.now();

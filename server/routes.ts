@@ -954,17 +954,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Документ не найден' });
       }
       
-      // Проверка существования файла и защита от path traversal
-      const filePath = path.resolve(uploadDir, path.basename(doc.filePath));
+      // Используем сохраненный filePath, но проверяем его на path traversal
+      const storedFileName = path.basename(doc.filePath);
+      const filePath = path.join(uploadDir, storedFileName);
       const uploadDirResolved = path.resolve(uploadDir);
+      const filePathResolved = path.resolve(filePath);
       
-      if (!filePath.startsWith(uploadDirResolved)) {
+      if (!filePathResolved.startsWith(uploadDirResolved)) {
         return res.status(403).json({ error: 'Доступ запрещен' });
       }
       
       const fs = await import('fs/promises');
       try {
-        await fs.access(filePath);
+        await fs.access(filePathResolved);
       } catch {
         return res.status(404).json({ error: 'Файл не найден' });
       }
@@ -978,7 +980,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userAgent: req.get('user-agent')
       });
       
-      res.download(filePath, sanitizeFileName(doc.fileName));
+      // Правильная кодировка имени файла для кириллицы
+      // Используем оба формата для максимальной совместимости браузеров
+      const fileName = doc.fileName;
+      const safeFileName = sanitizeFileName(fileName);
+      
+      // Создаем ASCII fallback имя (заменяем не-ASCII символы на _)
+      const asciiFallback = safeFileName.replace(/[^\x00-\x7F]/g, '_');
+      
+      // RFC 2231/5987 формат для UTF-8 имен
+      const encodedFileName = encodeURIComponent(safeFileName);
+      
+      // Устанавливаем оба варианта для совместимости
+      res.setHeader('Content-Disposition', 
+        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedFileName}`);
+      res.sendFile(filePathResolved);
     } catch (error) {
       res.status(500).json({ error: 'Ошибка при скачивании документа' });
     }
