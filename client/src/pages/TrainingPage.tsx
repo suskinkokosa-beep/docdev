@@ -24,6 +24,7 @@ import {
 import { Plus, Play, Award, CheckCircle, MoreVertical, Edit, Trash } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrainingProgramDialog } from "@/components/TrainingProgramDialog";
+import { TestFormDialog } from "@/components/TestFormDialog";
 import { useToast } from "@/hooks/use-toast";
 
 interface TrainingProgram {
@@ -48,7 +49,9 @@ interface TrainingProgress {
 
 export function TrainingPage() {
   const [showDialog, setShowDialog] = useState(false);
+  const [showTestDialog, setShowTestDialog] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState<TrainingProgram | undefined>(undefined);
+  const [selectedProgramId, setSelectedProgramId] = useState<string | undefined>(undefined);
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; id: string; title: string } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -122,6 +125,16 @@ export function TrainingPage() {
     setSelectedProgram(undefined);
   };
 
+  const handleCreateTest = (program: TrainingProgram) => {
+    setSelectedProgramId(program.id);
+    setShowTestDialog(true);
+  };
+
+  const handleCloseTestDialog = () => {
+    setShowTestDialog(false);
+    setSelectedProgramId(undefined);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -145,6 +158,12 @@ export function TrainingPage() {
         isOpen={showDialog}
         onClose={handleCloseDialog}
         program={selectedProgram}
+      />
+
+      <TestFormDialog
+        open={showTestDialog && !!selectedProgramId}
+        onOpenChange={setShowTestDialog}
+        programId={selectedProgramId || ""}
       />
 
       {programsLoading ? (
@@ -192,6 +211,10 @@ export function TrainingPage() {
                           <DropdownMenuItem onClick={() => handleEdit(program)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Редактировать
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleCreateTest(program)}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Создать тест
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
