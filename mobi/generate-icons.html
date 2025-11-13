@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>PWA Icons Generator</title>
+</head>
+<body>
+  <h1>PWA Icons Generator для УправДок</h1>
+  <p>Откройте эту страницу в браузере и нажмите кнопки для скачивания иконок</p>
+  
+  <div id="buttons"></div>
+
+  <script>
+    const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+    const buttonsDiv = document.getElementById('buttons');
+
+    sizes.forEach(size => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#2563eb';
+      ctx.fillRect(0, 0, size, size);
+
+      const fontSize = Math.floor(size * 0.4);
+      ctx.font = `bold ${fontSize}px Arial`;
+      ctx.fillStyle = 'white';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('УД', size / 2, size / 2);
+
+      const button = document.createElement('button');
+      button.textContent = `Скачать ${size}x${size}`;
+      button.style.margin = '5px';
+      button.style.padding = '10px';
+      button.onclick = () => {
+        canvas.toBlob(blob => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `icon-${size}x${size}.png`;
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      };
+      
+      buttonsDiv.appendChild(button);
+    });
+  </script>
+</body>
+</html>
