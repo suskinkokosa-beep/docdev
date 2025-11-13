@@ -292,8 +292,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/users', isAuthenticated, hasPermission('users', 'create'), async (req, res) => {
     try {
-      const data = insertUserSchema.parse(req.body);
+      const { roleId, umgIds, serviceIds, departmentId, ...userData } = req.body;
+      const data = insertUserSchema.parse(userData);
       const user = await storage.insertUser(data);
+      
+      // Назначить роль пользователю
+      if (roleId) {
+        await storage.assignRoleToUser(user.id, roleId);
+      }
+      
+      // Назначить доступ к УМГ
+      if (umgIds && Array.isArray(umgIds)) {
+        for (const umgId of umgIds) {
+          await storage.assignUmgToUser(user.id, umgId);
+        }
+      }
+      
+      // Назначить доступ к службам
+      if (serviceIds && Array.isArray(serviceIds)) {
+        for (const serviceId of serviceIds) {
+          await storage.assignServiceToUser(user.id, serviceId);
+        }
+      }
+      
       await storage.insertAuditLog({
         userId: (req.user as any).id,
         action: 'create',
@@ -311,9 +332,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/users/:id', isAuthenticated, hasPermission('users', 'edit'), validateUUID('id'), async (req, res) => {
     try {
+      const { roleId, umgIds, serviceIds, departmentId, ...userData } = req.body;
       // Валидация данных через Zod (частичное обновление)
-      const updateData = insertUserSchema.partial().parse(req.body);
+      const updateData = insertUserSchema.partial().parse(userData);
       const user = await storage.updateUser(req.params.id, updateData);
+      
+      // Обновить роль пользователя (удалить старые и добавить новую)
+      if (roleId) {
+        const currentRoles = await storage.getUserRoles(req.params.id);
+        for (const role of currentRoles) {
+          await storage.removeRoleFromUser(req.params.id, role.role.id);
+        }
+        await storage.assignRoleToUser(req.params.id, roleId);
+      }
+      
+      // Обновить доступ к УМГ
+      if (umgIds !== undefined) {
+        await storage.clearUserUmgAccess(req.params.id);
+        if (Array.isArray(umgIds)) {
+          for (const umgId of umgIds) {
+            await storage.assignUmgToUser(req.params.id, umgId);
+          }
+        }
+      }
+      
+      // Обновить доступ к службам
+      if (serviceIds !== undefined) {
+        await storage.clearUserServiceAccess(req.params.id);
+        if (Array.isArray(serviceIds)) {
+          for (const serviceId of serviceIds) {
+            await storage.assignServiceToUser(req.params.id, serviceId);
+          }
+        }
+      }
+      
       await storage.insertAuditLog({
         userId: (req.user as any).id,
         action: 'update',
@@ -1151,6 +1203,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const test = await storage.createTest(req.body);
       res.json(test);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/test-questions', isAuthenticated, hasPermission('training', 'create'), async (req, res) => {
+    try {
+      const question = await storage.createTestQuestion(req.body);
+      res.json(question);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

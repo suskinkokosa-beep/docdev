@@ -522,6 +522,14 @@ export const storage = {
     await db.insert(userServiceAccess).values({ userId, serviceId });
   },
 
+  async clearUserUmgAccess(userId: string) {
+    await db.delete(userUmgAccess).where(eq(userUmgAccess.userId, userId));
+  },
+
+  async clearUserServiceAccess(userId: string) {
+    await db.delete(userServiceAccess).where(eq(userServiceAccess.userId, userId));
+  },
+
   // ========== User Permissions Check ==========
   async getUserPermissions(userId: string): Promise<Permission[]> {
     const userRolesData = await this.getUserRoles(userId);
