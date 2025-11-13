@@ -28,6 +28,14 @@ async function seed() {
   console.log("🌱 Начало инициализации базы данных...");
 
   try {
+    // Проверка - если админ уже существует, БД уже заполнена
+    const existingAdmin = await db.select().from(users).where(eq(users.username, "admin"));
+    if (existingAdmin.length > 0) {
+      console.log("✓ База данных уже инициализирована (найден администратор)");
+      console.log("  Для переинициализации удалите все данные или пересоздайте БД через install.sh");
+      return;
+    }
+
     // 1. Создание прав доступа
     console.log("Создание прав доступа...");
     const permissionsList = [
@@ -69,55 +77,67 @@ async function seed() {
       { module: "audit", action: "export", description: "Экспорт журнала аудита" },
     ];
 
-    const createdPermissions = await db.insert(permissions).values(permissionsList).returning();
-    console.log(`✓ Создано ${createdPermissions.length} прав доступа`);
+    await db.insert(permissions).values(permissionsList).onConflictDoNothing();
+    const createdPermissions = await db.select().from(permissions);
+    console.log(`✓ Всего прав доступа: ${createdPermissions.length}`);
 
     // 2. Создание ролей
     console.log("Создание ролей...");
-    const adminRole = await db.insert(roles).values({
+    await db.insert(roles).values({
       name: "Администратор",
       description: "Полный доступ ко всей системе",
       isSystem: true,
-    }).returning();
+    }).onConflictDoNothing({ target: roles.name });
 
-    const docManagerRole = await db.insert(roles).values({
+    await db.insert(roles).values({
       name: "Менеджер документации",
       description: "Управление документами и объектами",
       isSystem: true,
-    }).returning();
+    }).onConflictDoNothing({ target: roles.name });
 
-    const engineerRole = await db.insert(roles).values({
+    await db.insert(roles).values({
       name: "Инженер",
       description: "Просмотр документов и объектов",
       isSystem: true,
-    }).returning();
+    }).onConflictDoNothing({ target: roles.name });
+    
+    // Получаем роли из БД (существующие или только что созданные)
+    const allRoles = await db.select().from(roles);
+    const adminRole = allRoles.find(r => r.name === "Администратор");
+    const docManagerRole = allRoles.find(r => r.name === "Менеджер документации");
+    const engineerRole = allRoles.find(r => r.name === "Инженер");
+    
+    if (!adminRole) throw new Error("Роль администратора не найдена");
 
     console.log("✓ Создано 3 роли");
 
     // 3. Назначение прав администратору (все права)
     console.log("Назначение прав администратору...");
     const adminPermissions = createdPermissions.map((perm: Permission) => ({
-      roleId: adminRole[0].id,
+      roleId: adminRole.id,
       permissionId: perm.id,
     }));
-    await db.insert(rolePermissions).values(adminPermissions);
+    await db.insert(rolePermissions).values(adminPermissions).onConflictDoNothing();
     console.log("✓ Администратору назначены все права");
 
     // 4. Создание администратора
     console.log("Создание администратора...");
     const hashedPassword = await bcrypt.hash("admin123", 10);
-    const adminUser = await db.insert(users).values({
+    await db.insert(users).values({
       username: "admin",
       password: hashedPassword,
       fullName: "Системный администратор",
       email: "admin@upravdoc.ru",
       status: "active",
-    }).returning();
-
-    await db.insert(userRoles).values({
-      userId: adminUser[0].id,
-      roleId: adminRole[0].id,
-    });
+    }).onConflictDoNothing({ target: users.username });
+    
+    const adminUser = await db.select().from(users).where(eq(users.username, "admin"));
+    if (adminUser[0]) {
+      await db.insert(userRoles).values({
+        userId: adminUser[0].id,
+        roleId: adminRole.id,
+      }).onConflictDoNothing();
+    }
     console.log("✓ Создан администратор (логин: admin, пароль: admin123)");
 
     // 5. Создание тестовых УМГ
