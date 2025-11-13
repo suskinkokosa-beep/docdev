@@ -63,7 +63,26 @@ export function ObjectsPage() {
 
   const handleQRScan = async (qrCode: string) => {
     try {
-      // Найти объект по QR коду
+      // Проверить является ли QR код URL
+      if (qrCode.includes('/objects/') && qrCode.includes('/documents')) {
+        // Это полный URL, извлечь objectId
+        const urlParts = qrCode.split('/objects/');
+        if (urlParts.length > 1) {
+          const objectId = urlParts[1].split('/')[0];
+          const object = objects.find(obj => obj.id === objectId);
+          
+          if (object) {
+            toast({
+              title: "Объект найден",
+              description: `Переход к документам объекта ${object.name}`,
+            });
+            navigate(`/objects/${objectId}/documents`);
+            return;
+          }
+        }
+      }
+      
+      // Иначе попробовать найти по коду объекта (старый формат)
       const object = objects.find(obj => obj.code === qrCode);
       
       if (object) {
@@ -71,7 +90,6 @@ export function ObjectsPage() {
           title: "Объект найден",
           description: `Переход к документам объекта ${object.name}`,
         });
-        // Перенаправить на страницу документов объекта
         navigate(`/objects/${object.id}/documents`);
       } else {
         toast({
@@ -168,7 +186,12 @@ export function ObjectsPage() {
                   </TableRow>
                 ) : (
                   filteredObjects.map((obj) => (
-                    <TableRow key={obj.id} data-testid={`row-object-${obj.id}`}>
+                    <TableRow 
+                      key={obj.id} 
+                      data-testid={`row-object-${obj.id}`}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => navigate(`/objects/${obj.id}/documents`)}
+                    >
                       <TableCell className="font-mono text-sm">{obj.code}</TableCell>
                       <TableCell className="font-medium">{obj.name}</TableCell>
                       <TableCell>{obj.type}</TableCell>
@@ -180,7 +203,8 @@ export function ObjectsPage() {
                             size="icon" 
                             variant="ghost" 
                             data-testid={`button-qr-${obj.id}`}
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setQrObject(obj);
                               setQrDialogOpen(true);
                             }}
@@ -191,7 +215,8 @@ export function ObjectsPage() {
                             size="icon" 
                             variant="ghost" 
                             data-testid={`button-download-${obj.id}`}
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               const link = document.createElement('a');
                               link.href = `/api/objects/${obj.id}/export`;
                               link.download = `object-${obj.code}.pdf`;
@@ -224,6 +249,7 @@ export function ObjectsPage() {
         <QRCodeDialog
           open={qrDialogOpen}
           onOpenChange={setQrDialogOpen}
+          objectId={qrObject.id}
           objectCode={qrObject.code}
           objectName={qrObject.name}
         />

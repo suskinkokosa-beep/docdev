@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserFormDialog } from "@/components/UserFormDialog";
+import { UserPermissionsDialog } from "@/components/UserPermissionsDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -47,6 +48,8 @@ export function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | undefined>(undefined);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
+  const [permissionsUser, setPermissionsUser] = useState<User | undefined>(undefined);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -107,10 +110,8 @@ export function UsersPage() {
   };
 
   const handleManagePermissions = (user: User) => {
-    toast({
-      title: "В разработке",
-      description: "Функция управления правами доступа в разработке",
-    });
+    setPermissionsUser(user);
+    setPermissionsDialogOpen(true);
   };
 
   const getStatusBadge = (status: string) => {
@@ -202,7 +203,11 @@ export function UsersPage() {
                       </TableCell>
                       <TableCell>
                         {user.roles && user.roles.length > 0 ? (
-                          <Badge variant="outline">{user.roles[0].name}</Badge>
+                          <div className="flex flex-wrap gap-1">
+                            {user.roles.map((role) => (
+                              <Badge key={role.id} variant="outline">{role.name}</Badge>
+                            ))}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground text-sm">Нет роли</span>
                         )}
@@ -251,6 +256,15 @@ export function UsersPage() {
         user={selectedUser}
         mode={dialogMode}
       />
+
+      {permissionsUser && (
+        <UserPermissionsDialog
+          open={permissionsDialogOpen}
+          onOpenChange={setPermissionsDialogOpen}
+          onActualClose={() => setPermissionsUser(undefined)}
+          user={permissionsUser}
+        />
+      )}
     </div>
   );
 }
