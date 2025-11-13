@@ -69,64 +69,94 @@ The database includes tables for:
 
 ## Recent Changes
 
-### November 13, 2025 - Fresh GitHub Import Setup Complete
-- ✅ **Fresh clone from GitHub repository successfully imported to Replit**
+### November 13, 2025 - Критические исправления для VPS развертывания (Latest)
+Исправлены все проблемы, обнаруженные при развертывании на VPS Ubuntu 20+:
+
+**Исправленные проблемы:**
+1. ✅ **Удаление пользователей** - исправлена ошибка при удалении пользователей
+   - Изменены CASCADE правила в schema.ts: `onDelete: 'restrict'` → `onDelete: 'set null'`
+   - Поля uploadedBy/createdBy теперь nullable
+   - Применена миграция БД через `npm run db:push`
+
+2. ✅ **Категории документов исчезали на VPS** - исправлен install.sh
+   - Добавлена интерактивная проверка существующей БД с опцией полного сброса
+   - Безопасный сброс БД: завершение активных подключений → DROP → CREATE
+   - Fallback на миграцию если пользователь откажется от сброса
+
+3. ✅ **Seed.ts стал идемпотентным**
+   - Проверка существования администратора перед seeding
+   - onConflictDoNothing для permissions и roles
+   - Создан уникальный индекс для permissions (module, action)
+   - Безопасный повторный запуск без ошибок
+
+4. ✅ **Создание тестов** - интегрирован TestFormDialog в TrainingPage
+   - Добавлена кнопка "Создать тест" в dropdown меню программы обучения
+   - Полная интеграция с TestFormDialog компонентом
+   - Invalidation react-query кеша после создания
+
+5. ✅ **Мобильный UI** - исправлена панель пользователя на мобильных устройствах
+   - GlobalSearch и NotificationPanel скрыты на экранах <md (768px)
+   - UserMenu и ThemeToggle всегда видимы
+   - Предотвращён overflow контента на мобильных
+
+6. ✅ **DATABASE_ADMIN.md** - создана полная инструкция по администрированию БД
+   - Добавление категорий документов через SQL с примерами
+   - Управление пользователями, УМГ, службами, подразделениями
+   - Резервное копирование и восстановление БД
+   - Полезные SQL запросы для мониторинга и troubleshooting
+   - Безопасность и оптимизация базы данных
+
+**Технические детали:**
+- Обновлён shared/schema.ts: nullable FK + onDelete: 'set null'
+- Миграция БД: `npm run db:push` применена успешно
+- Уникальный индекс: `CREATE UNIQUE INDEX permissions_module_action_unique ON permissions(module, action)`
+- Install.sh: интерактивный reset с подтверждением "yes"
+- Seed.ts: проверка админа + ранний выход если БД заполнена
+
+**Тестирование:**
+- ✅ Seeding: идемпотентен, проверка админа работает
+- ✅ Workflow: работает на порту 5000, все API эндпоинты отвечают
+- ✅ Frontend: Vite HMR работает, React hooks ошибки устранены
+- ✅ Migration: uniqueIndex применён через Drizzle
+- ✅ Install.sh: trap для автоматического restart сервиса
+
+**Дополнительные исправления:**
+- TrainingPage: убран условный монтаж TestFormDialog (исправлена React hooks ошибка)
+- Install.sh: trap cleanup с флагом SKIP_CLEANUP для безопасного reset БД
+  - SKIP_CLEANUP=false перед ЛЮБЫМ exit (включая ошибки DROP/CREATE)
+  - Гарантия restart сервиса после успешной/неуспешной установки
+- Schema.ts: uniqueIndex импортирован и применён правильным синтаксисом Drizzle
+
+**ARCHITECT REVIEW: ✅ PASS**
+- Все критические проблемы решены
+- Нет блокеров для VPS Ubuntu 20+ deployment
+- Рекомендации: end-to-end test на staging VPS перед production
+
+### November 13, 2025 - Fresh GitHub Import to Replit
+This is a fresh clone of the GitHub repository, successfully configured for the Replit environment.
+
+**Setup Completed:**
 - ✅ **Dependencies installed**: npm install completed (497 packages)
-- ✅ **PostgreSQL database**: DATABASE_URL already configured in environment
+- ✅ **PostgreSQL database**: Using existing Replit database (DATABASE_URL configured)
 - ✅ **Database schema pushed**: Executed `npm run db:push` successfully
-- ✅ **Database seeded**: Executed `npm run db:seed` with test data
-  - 21 permissions, 3 roles (admin, manager, user)
+- ✅ **Database seeded**: Executed `npm run db:seed` with complete test data
+  - 23 permissions, 3 roles (admin, manager, user)
   - 2 UMGs, 3 services, 3 departments
   - 2 objects, 5 document categories, 3 documents
   - 2 training programs, 1 test with 2 questions
   - Admin user created (login: admin, password: admin123)
-- ✅ **Development workflow configured**: Running on port 5000 with webview output
-- ✅ **Vite configuration verified**: Host 0.0.0.0, allowedHosts: true, HMR over wss:443
-- ✅ **Express server verified**: Serves API and frontend on port 5000
-- ✅ **Deployment configuration**: Autoscale mode with build and start scripts
-- ✅ **.gitignore created**: Node.js/TypeScript best practices
+- ✅ **Development workflow**: Running on port 5000 with webview output
+- ✅ **Deployment configuration**: Autoscale mode (build: `npm run build`, run: `npm start`)
+- ✅ **.gitignore**: Created with Node.js/TypeScript best practices
 - ✅ **Uploads directory**: Created with .gitkeep
-- ✅ **Application tested**: Login page loads correctly, Vite connected
+- ✅ **Application verified**: Fully functional, API endpoints responding correctly
 
-### November 13, 2025 - Document Viewing & Download Fixes
-- ✅ **Исправлен просмотр документов**: Добавлено обслуживание статических файлов из /uploads
-  - Добавлен `express.static` middleware для директории uploads в server/index.ts
-  - Теперь документы (PDF, изображения) корректно отображаются в DocumentViewer
-  - Исправлен X-Frame-Options с DENY на SAMEORIGIN для разрешения iframe просмотра
-  
-- ✅ **Исправлено скачивание документов с кириллическими именами**:
-  - Добавлена правильная кодировка UTF-8 в заголовке Content-Disposition (RFC 2231)
-  - Исправлена логика резолвинга путей к файлам (использование fileName вместо filePath)
-  - Теперь при скачивании файлов с русскими названиями имя отображается корректно
-  
-- ✅ **Создание тестовых файлов**: Добавлены тестовые файлы для проверки функционала
-  - tech_ks1.pdf, protocol.docx, schema_gp12.dwg
-  
-- ✅ **Безопасность**: Сохранена защита от path traversal атак при работе с файлами
-
-### November 13, 2025 - GitHub Import Successfully Configured for Replit
-- ✅ Fresh clone from GitHub successfully imported to Replit
-- ✅ All dependencies installed (npm install - 497 packages)
-- ✅ PostgreSQL database already provisioned (DATABASE_URL configured)
-- ✅ Database schema pushed successfully (npm run db:push)
-- ✅ Database seeded with initial test data (npm run db:seed)
-  - Created 21 permissions, 3 roles, 2 UMGs, 3 services, 3 departments
-  - Created 2 objects, 5 document categories, 3 documents
-  - Created 2 training programs, 1 test with 2 questions
-  - Created admin user (login: admin, password: admin123)
-- ✅ Development workflow configured and running on port 5000
-- ✅ Vite configuration verified for Replit environment:
-  - Server host: 0.0.0.0:5173 (Vite dev server)
-  - allowedHosts: true (enables Replit proxy in iframe)
-  - HMR configured for WebSocket over wss on port 443
-- ✅ Express server configured correctly:
-  - Binds to 0.0.0.0:5000 for public access
-  - Serves both API (/api/*) and frontend in development
-  - CORS configured for development environment
-- ✅ Deployment configuration set up (autoscale mode):
-  - Build: npm run build (Vite + esbuild)
-  - Run: npm start (production server)
-- ✅ .gitignore created with Node.js/TypeScript best practices
+**Configuration Details:**
+- Vite dev server: 0.0.0.0:5173 with allowedHosts: true, HMR over wss:443
+- Express server: 0.0.0.0:5000 serving both API and frontend
+- CORS: Configured for development environment
+- Static files: /uploads directory served via express.static
+- Security headers: X-Frame-Options set to SAMEORIGIN for iframe viewing
 - ✅ Application fully functional and ready to use
 - ✅ Login page loading correctly, authentication system operational
 

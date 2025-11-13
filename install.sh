@@ -21,6 +21,21 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Флаг для контроля перезапуска сервиса
+SKIP_CLEANUP=false
+
+# Trap для гарантии перезапуска сервиса при выходе
+cleanup() {
+    if [ "$SKIP_CLEANUP" = "true" ]; then
+        return 0
+    fi
+    if systemctl list-unit-files | grep -q "docdev.service"; then
+        echo -e "${YELLOW}Перезапуск сервиса docdev...${NC}"
+        systemctl start docdev 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Установка системы управления документацией${NC}"
 echo -e "${GREEN}========================================${NC}"
@@ -222,14 +237,61 @@ fi
 echo ""
 echo -e "${YELLOW}Создание базы данных и пользователя...${NC}"
 
+# Проверка существования базы данных
+DB_EXISTS=$(sudo -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -c 1 || echo "0")
+
+if [ "$DB_EXISTS" = "1" ]; then
+    echo -e "${YELLOW}⚠ База данных '${DB_NAME}' уже существует${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════${NC}"
+    echo -e "${RED}ВНИМАНИЕ: Сброс базы данных удалит ВСЕ данные!${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════${NC}"
+    read -p "Хотите удалить и пересоздать базу данных? (yes/NO): " RESET_DB
+    
+    if [ "$RESET_DB" = "yes" ]; then
+        # Отключаем автоматический cleanup во время reset
+        SKIP_CLEANUP=true
+        
+        echo -e "${YELLOW}Остановка приложения...${NC}"
+        systemctl stop docdev 2>/dev/null || true
+        
+        echo -e "${YELLOW}Завершение активных подключений к базе данных...${NC}"
+        sudo -u postgres psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${DB_NAME}' AND pid <> pg_backend_pid();" 2>/dev/null || true
+        
+        echo -e "${YELLOW}Удаление базы данных '${DB_NAME}'...${NC}"
+        sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" || {
+            echo -e "${RED}✗ Ошибка при удалении базы данных${NC}"
+            echo -e "${YELLOW}Попробуйте остановить все процессы использующие БД:${NC}"
+            echo "  sudo systemctl stop docdev"
+            echo "  sudo -u postgres psql -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${DB_NAME}';\""
+            SKIP_CLEANUP=false  # Включаем обратно
+            exit 1
+        }
+        
+        echo -e "${GREEN}✓ База данных удалена${NC}"
+        echo -e "${YELLOW}Создание новой базы данных...${NC}"
+        sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME};" || {
+            echo -e "${RED}✗ Ошибка при создании базы данных${NC}"
+            SKIP_CLEANUP=false  # Включаем cleanup перед выходом
+            exit 1
+        }
+        echo -e "${GREEN}✓ Новая база данных создана${NC}"
+        
+        # Включаем cleanup обратно после успешного сброса
+        SKIP_CLEANUP=false
+    else
+        echo -e "${GREEN}✓ Используется существующая база данных${NC}"
+        echo -e "${YELLOW}⚠ Будет выполнена миграция схемы (npm run db:push)${NC}"
+    fi
+else
+    echo -e "${YELLOW}Создание базы данных...${NC}"
+    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME};"
+    echo -e "${GREEN}✓ База данных создана${NC}"
+fi
+
 # Создание пользователя
 sudo -u postgres psql -c "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" | grep -q 1 || \
 sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" || \
 sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
-
-# Создание базы данных
-sudo -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1 || \
-sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME};"
 
 # Предоставление прав
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
