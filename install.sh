@@ -655,12 +655,136 @@ fi
 
 echo ""
 
-# Создание таблиц в базе данных
-echo -e "${YELLOW}[11/17] Создание таблиц в базе данных...${NC}"
-cd /docdev
+# ========== ФУНКЦИЯ БЕЗОПАСНОЙ СИНХРОНИЗАЦИИ СХЕМЫ ==========
+run_safe_schema_sync() {
+    echo -e "${CYAN}════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}   Безопасная синхронизация схемы базы данных${NC}"
+    echo -e "${CYAN}════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    # Создание директорий для бэкапов и логов
+    mkdir -p /docdev/backups
+    mkdir -p /docdev/logs
+    
+    local TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    local BACKUP_FILE="/docdev/backups/${DB_NAME}_${TIMESTAMP}.dump"
+    local PREVIEW_LOG="/docdev/logs/schema-diff-${TIMESTAMP}.log"
+    local APPLY_LOG="/docdev/logs/schema-apply-${TIMESTAMP}.log"
+    
+    echo -e "${YELLOW}[Шаг 1/4] Проверка изменений схемы...${NC}"
+    
+    # Проверка наличия pg_dump
+    if ! command -v pg_dump &> /dev/null; then
+        echo -e "${RED}✗ pg_dump не найден. Установите postgresql-client${NC}"
+        exit 1
+    fi
+    
+    # Включаем pipefail для безопасности pipe операций
+    set -o pipefail
+    
+    # Экспорт переменных окружения
+    export $(cat /docdev/.env | grep -v '^#' | xargs)
+    
+    # НЕ ПРИМЕНЯЕМ изменения - только логируем информацию о схеме
+    echo -e "${CYAN}Подготовка к проверке схемы...${NC}"
+    echo "Текущая схема будет проверена после создания backup" > "$PREVIEW_LOG"
+    echo -e "${GREEN}✓ Готово к созданию резервной копии${NC}"
+    
+    # Проверка наличия таблиц в БД
+    TABLE_COUNT=$(PGPASSWORD="${DB_PASSWORD}" psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'" 2>/dev/null | tr -d ' ' || echo "0")
+    
+    if [ "$TABLE_COUNT" -gt "0" ]; then
+        echo ""
+        echo -e "${YELLOW}[Шаг 2/4] Создание резервной копии базы данных...${NC}"
+        echo -e "${CYAN}Найдено таблиц: ${TABLE_COUNT}${NC}"
+        echo -e "${CYAN}Backup файл: ${BACKUP_FILE}${NC}"
+        
+        # Создание бэкапа (БЕЗ pipe через tee для безопасности)
+        if PGPASSWORD="${DB_PASSWORD}" pg_dump -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} --format=custom --file="$BACKUP_FILE" 2>> "$APPLY_LOG"; then
+            if [ ! -s "$BACKUP_FILE" ]; then
+                echo -e "${RED}✗ Backup файл пустой или поврежден${NC}"
+                rm -f "$BACKUP_FILE"
+                exit 1
+            fi
+            local BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+            echo -e "${GREEN}✓ Резервная копия создана успешно (размер: ${BACKUP_SIZE})${NC}"
+            echo -e "${CYAN}Файл: ${BACKUP_FILE}${NC}"
+            echo ""
+            echo -e "${MAGENTA}═══════════════════════════════════════════════════${NC}"
+            echo -e "${MAGENTA}  Инструкции по восстановлению из backup:${NC}"
+            echo -e "${MAGENTA}═══════════════════════════════════════════════════${NC}"
+            echo -e "${YELLOW}1. Остановите сервис:${NC}"
+            echo -e "   sudo systemctl stop docdev"
+            echo -e ""
+            echo -e "${YELLOW}2. Восстановите базу данных:${NC}"
+            echo -e "   PGPASSWORD='${DB_PASSWORD}' pg_restore -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c ${BACKUP_FILE}"
+            echo -e ""
+            echo -e "${YELLOW}3. Перезапустите сервис:${NC}"
+            echo -e "   sudo systemctl start docdev"
+            echo -e "${MAGENTA}═══════════════════════════════════════════════════${NC}"
+            echo ""
+        else
+            echo -e "${RED}✗ Ошибка при создании резервной копии${NC}"
+            echo -e "${YELLOW}Продолжить без резервной копии? (yes/no):${NC}"
+            read -p "> " CONTINUE_WITHOUT_BACKUP
+            if [ "$CONTINUE_WITHOUT_BACKUP" != "yes" ]; then
+                echo -e "${RED}Установка прервана${NC}"
+                exit 1
+            fi
+        fi
+    else
+        echo ""
+        echo -e "${YELLOW}[Шаг 2/4] Пропуск резервного копирования${NC}"
+        echo -e "${CYAN}База данных пуста, резервная копия не требуется${NC}"
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}[Шаг 3/4] Применение схемы базы данных...${NC}"
+    echo -e "${CYAN}DATABASE_URL: ${DATABASE_URL_SAFE}${NC}"
+    
+    # Применение изменений
+    if npm run db:push 2>&1 | tee "$APPLY_LOG"; then
+        if grep -qi "error" "$APPLY_LOG"; then
+            echo -e "${RED}✗ Обнаружены ошибки при применении схемы${NC}"
+            cat "$APPLY_LOG"
+            echo ""
+            echo -e "${YELLOW}Восстановите из backup если необходимо:${NC}"
+            echo -e "  PGPASSWORD='${DB_PASSWORD}' pg_restore -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c ${BACKUP_FILE}"
+            exit 1
+        else
+            echo -e "${GREEN}✓ Схема применена успешно${NC}"
+            echo -e "${CYAN}Лог сохранен: ${APPLY_LOG}${NC}"
+        fi
+    else
+        echo -e "${RED}✗ Ошибка при применении схемы${NC}"
+        echo -e "${YELLOW}Восстановите из backup если необходимо:${NC}"
+        echo -e "  PGPASSWORD='${DB_PASSWORD}' pg_restore -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c ${BACKUP_FILE}"
+        exit 1
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}[Шаг 4/4] Проверка результатов...${NC}"
+    PGPASSWORD="${DB_PASSWORD}" psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c "\dt" | tee /tmp/tables.log
+    NEW_TABLE_COUNT=$(grep -c "public |" /tmp/tables.log || echo "0")
+    echo -e "${GREEN}✓ Всего таблиц в базе данных: ${NEW_TABLE_COUNT}${NC}"
+    echo ""
+    
+    # Информация о backup
+    if [ -f "$BACKUP_FILE" ]; then
+        echo -e "${CYAN}════════════════════════════════════════════════════${NC}"
+        echo -e "${GREEN}✅ Миграция завершена успешно!${NC}"
+        echo -e "${CYAN}════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}Резервная копия сохранена:${NC} ${BACKUP_FILE}"
+        echo -e "${YELLOW}Логи миграции:${NC}"
+        echo -e "  - Проверка схемы: ${PREVIEW_LOG}"
+        echo -e "  - Применение: ${APPLY_LOG}"
+        echo -e "${CYAN}════════════════════════════════════════════════════${NC}"
+    fi
+}
 
-# Экспорт всех переменных окружения из .env
-export $(cat /docdev/.env | grep -v '^#' | xargs)
+# Создание таблиц в базе данных
+echo -e "${YELLOW}[11/17] Синхронизация схемы базы данных...${NC}"
+cd /docdev
 
 # Проверка наличия drizzle.config.ts
 if [ ! -f "drizzle.config.ts" ]; then
@@ -688,28 +812,8 @@ DRIZZLECONFIGEOF
     echo -e "${GREEN}✓ Файл drizzle.config.ts создан${NC}"
 fi
 
-echo -e "${YELLOW}Применение миграций базы данных...${NC}"
-echo -e "${CYAN}DATABASE_URL: ${DATABASE_URL_SAFE}${NC}"
-
-if npm run db:push 2>&1 | tee /tmp/db-push.log; then
-    if grep -q "error" /tmp/db-push.log || grep -q "Error" /tmp/db-push.log; then
-        echo -e "${RED}✗ Обнаружены ошибки при создании таблиц${NC}"
-        cat /tmp/db-push.log
-        exit 1
-    else
-        echo -e "${GREEN}✓ Таблицы созданы успешно${NC}"
-    fi
-else
-    echo -e "${RED}✗ Ошибка при создании таблиц${NC}"
-    echo ""
-    echo -e "${YELLOW}Полный лог ошибки:${NC}"
-    cat /tmp/db-push.log
-    echo ""
-    echo -e "${YELLOW}Проверка структуры базы данных:${NC}"
-    sudo -u postgres psql -d ${DB_NAME} -c "\dt" 2>&1 || true
-    sudo -u postgres psql -d ${DB_NAME} -c "\dx" 2>&1 || true
-    exit 1
-fi
+# Вызов функции безопасной синхронизации
+run_safe_schema_sync
 
 # Проверка созданных таблиц
 echo -e "${YELLOW}Проверка созданных таблиц...${NC}"

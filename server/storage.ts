@@ -710,35 +710,151 @@ export const storage = {
   },
 
   // ========== Search & Filter ==========
-  async searchDocuments(query: string, userId: string) {
-    // Умный поиск с учетом прав пользователя
-    // Очистка запроса от потенциально опасных символов
-    const sanitizedQuery = query.replace(/[%_]/g, '').trim();
+  async searchDocuments(params: {
+    query: string;
+    userId: string;
+    categoryId?: string;
+    objectId?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    tags?: string[];
+    limit?: number;
+    offset?: number;
+  }) {
+    const { query, userId, categoryId, objectId, dateFrom, dateTo, tags, limit = 20, offset = 0 } = params;
+    
+    // Очистка запроса от tsquery операторов и опасных символов
+    const sanitizedQuery = query.replace(/[!@#$%^&*()+=[\]{};':"\\|,.<>?]/g, ' ').trim();
     if (sanitizedQuery.length < 2) return [];
     
     const userAccess = await this.getUserServiceAccess(userId);
     const serviceIds = userAccess.map(s => s.service.id);
-    
     if (serviceIds.length === 0) return [];
     
-    // Используем параметризованные запросы для защиты от SQL инъекций
-    const searchPattern = `%${sanitizedQuery}%`;
+    // Создаем tsquery для полнотекстового поиска
+    const tsQuery = sql`plainto_tsquery('russian', ${sanitizedQuery})`;
+    const useFullTextSearch = sanitizedQuery.length > 0;
+    
+    // Создаем SQL фрагменты для ранжирования и подсветки
+    const rank = useFullTextSearch 
+      ? sql<number>`ts_rank_cd(${documents.searchVector}, ${tsQuery})`
+      : sql<number>`similarity(${documents.name}, ${sanitizedQuery})`;
+    
+    const headline = useFullTextSearch
+      ? sql<string>`ts_headline('russian', COALESCE(${documents.textContent}, ${documents.name}), ${tsQuery}, 'StartSel=<mark>, StopSel=</mark>, MaxFragments=2, MinWords=5, MaxWords=15')`
+      : sql<string>`''`;
+    
+    // Создаем условия фильтрации
+    const conditions: any[] = [
+      inArray(documentServices.serviceId, serviceIds),
+      eq(documentServices.canView, true)
+    ];
+    
+    // Добавляем полнотекстовый поиск или триграмный fallback
+    if (useFullTextSearch) {
+      conditions.push(sql`${documents.searchVector} @@ ${tsQuery}`);
+    } else {
+      conditions.push(
+        or(
+          sql`similarity(${documents.name}, ${sanitizedQuery}) > 0.3`,
+          sql`${documents.name} ILIKE ${'%' + sanitizedQuery + '%'}`,
+          sql`${documents.fileName} ILIKE ${'%' + sanitizedQuery + '%'}`
+        )
+      );
+    }
+    
+    // Фильтры
+    if (categoryId) {
+      conditions.push(eq(documents.categoryId, categoryId));
+    }
+    if (objectId) {
+      conditions.push(eq(documents.objectId, objectId));
+    }
+    if (dateFrom && dateTo) {
+      conditions.push(
+        sql`${documents.createdAt} BETWEEN ${dateFrom} AND ${dateTo}`
+      );
+    }
+    if (tags && tags.length > 0) {
+      conditions.push(sql`${documents.tags} && ARRAY[${sql.join(tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+    }
+    
+    // Выполняем запрос
     const results = await db.select({
-      document: documents
+      document: documents,
+      rank,
+      highlight: headline,
+      category: documentCategories
     })
     .from(documents)
     .innerJoin(documentServices, eq(documentServices.documentId, documents.id))
-    .where(and(
-      inArray(documentServices.serviceId, serviceIds),
-      or(
-        sql`${documents.name} ILIKE ${searchPattern}`,
-        sql`${documents.code} ILIKE ${searchPattern}`,
-        sql`${documents.fileName} ILIKE ${searchPattern}`
-      )
-    ))
-    .limit(50);
+    .leftJoin(documentCategories, eq(documents.categoryId, documentCategories.id))
+    .where(and(...conditions))
+    .orderBy(sql`${rank} DESC`, sql`${documents.createdAt} DESC`)
+    .limit(limit)
+    .offset(offset);
     
-    return results.map(r => r.document);
+    return results.map(r => ({
+      ...r.document,
+      highlight: r.highlight,
+      rank: r.rank,
+      category: r.category
+    }));
+  },
+  
+  async searchDocumentsCount(params: {
+    query: string;
+    userId: string;
+    categoryId?: string;
+    objectId?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    tags?: string[];
+  }): Promise<number> {
+    const { query, userId, categoryId, objectId, dateFrom, dateTo, tags } = params;
+    
+    const sanitizedQuery = query.replace(/[!@#$%^&*()+=[\]{};':"\\|,.<>?]/g, ' ').trim();
+    if (sanitizedQuery.length < 2) return 0;
+    
+    const userAccess = await this.getUserServiceAccess(userId);
+    const serviceIds = userAccess.map(s => s.service.id);
+    if (serviceIds.length === 0) return 0;
+    
+    const tsQuery = sql`plainto_tsquery('russian', ${sanitizedQuery})`;
+    const useFullTextSearch = sanitizedQuery.length > 0;
+    
+    const conditions: any[] = [
+      inArray(documentServices.serviceId, serviceIds),
+      eq(documentServices.canView, true)
+    ];
+    
+    if (useFullTextSearch) {
+      conditions.push(sql`${documents.searchVector} @@ ${tsQuery}`);
+    } else {
+      conditions.push(
+        or(
+          sql`similarity(${documents.name}, ${sanitizedQuery}) > 0.3`,
+          sql`${documents.name} ILIKE ${'%' + sanitizedQuery + '%'}`,
+          sql`${documents.fileName} ILIKE ${'%' + sanitizedQuery + '%'}`
+        )
+      );
+    }
+    
+    if (categoryId) conditions.push(eq(documents.categoryId, categoryId));
+    if (objectId) conditions.push(eq(documents.objectId, objectId));
+    if (dateFrom && dateTo) {
+      conditions.push(sql`${documents.createdAt} BETWEEN ${dateFrom} AND ${dateTo}`);
+    }
+    if (tags && tags.length > 0) {
+      conditions.push(sql`${documents.tags} && ARRAY[${sql.join(tags.map(t => sql`${t}`), sql`, `)}]::text[]`);
+    }
+    
+    const [result] = await db.select({ count: sql<number>`count(DISTINCT ${documents.id})` })
+      .from(documents)
+      .innerJoin(documentServices, eq(documentServices.documentId, documents.id))
+      .where(and(...conditions));
+    
+    return result.count || 0;
   },
 
   async getObjectsByUserAccess(userId: string) {

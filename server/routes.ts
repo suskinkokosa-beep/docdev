@@ -1425,20 +1425,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ========== SEARCH ROUTES ==========
+  // ========== SEARCH ROUTES (FULL-TEXT SEARCH) ==========
   app.get('/api/search/documents', isAuthenticated, async (req, res) => {
     try {
       const query = req.query.q as string;
       if (!query || query.length < 2) {
         return res.status(400).json({ error: 'Поисковый запрос должен содержать минимум 2 символа' });
       }
-      // Ограничение длины запроса для защиты
       if (query.length > 100) {
         return res.status(400).json({ error: 'Поисковый запрос слишком длинный (максимум 100 символов)' });
       }
-      const results = await storage.searchDocuments(query, (req.user as any).id);
-      res.json(results);
+      
+      // Парсим фильтры и пагинацию
+      const categoryId = req.query.categoryId as string | undefined;
+      const objectId = req.query.objectId as string | undefined;
+      const tags = req.query.tags ? (Array.isArray(req.query.tags) ? req.query.tags : [req.query.tags]) as string[] : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+      
+      // Парсим даты
+      let dateFrom: Date | undefined;
+      let dateTo: Date | undefined;
+      if (req.query.dateFrom) {
+        dateFrom = new Date(req.query.dateFrom as string);
+      }
+      if (req.query.dateTo) {
+        dateTo = new Date(req.query.dateTo as string);
+      }
+      
+      // Выполняем поиск с фильтрами
+      const results = await storage.searchDocuments({
+        query,
+        userId: (req.user as any).id,
+        categoryId,
+        objectId,
+        dateFrom,
+        dateTo,
+        tags,
+        limit,
+        offset
+      });
+      
+      // Получаем общее количество для пагинации
+      const total = await storage.searchDocumentsCount({
+        query,
+        userId: (req.user as any).id,
+        categoryId,
+        objectId,
+        dateFrom,
+        dateTo,
+        tags
+      });
+      
+      res.json({
+        results,
+        total,
+        limit,
+        offset,
+        hasMore: offset + results.length < total
+      });
     } catch (error) {
+      console.error('Search error:', error);
       res.status(500).json({ error: 'Ошибка поиска' });
     }
   });

@@ -8,11 +8,19 @@ import {
   boolean,
   jsonb,
   pgEnum,
-  uniqueIndex
+  uniqueIndex,
+  customType
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
+
+// Custom type для tsvector (полнотекстовый поиск PostgreSQL)
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
 
 // Enums
 export const actionTypeEnum = pgEnum('action_type', [
@@ -147,6 +155,8 @@ export const documents = pgTable("documents", {
   metadata: jsonb("metadata"),
   uploadedBy: varchar("uploaded_by", { length: 36 }).references(() => users.id, { onDelete: 'set null' }),
   version: integer("version").default(1).notNull(),
+  textContent: text("text_content"), // Извлеченный текст из документа для индексации
+  searchVector: tsvector("search_vector"), // Автоматически обновляемый tsvector для полнотекстового поиска
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
