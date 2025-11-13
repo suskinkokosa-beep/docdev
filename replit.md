@@ -4,7 +4,54 @@
 УправДок is a full-stack document management system designed for managing technical documentation related to gas pipeline infrastructure. It provides features for comprehensive document handling, organizational structure management, user role-based access control, and training programs. The system aims to streamline the management of critical infrastructure documentation, enhance operational efficiency, and ensure compliance through structured data management and audit trails.
 
 ## Recent Changes (November 13, 2025)
+
+### Latest Updates - Production-Ready Document Viewer & PWA Mobile App
+
+1. **Улучшенный Document Viewer** (PRODUCTION READY! ✅)
+   - ✅ **PDF**: Полноценный просмотр с локальным worker (offline-ready) + навигация и масштабирование
+   - ✅ **Word .docx**: Browser-safe рендеринг через docx-preview с динамическими стилями
+   - ✅ **Excel .xlsx/.xls**: Конвертация в HTML таблицы с просмотром всех листов (xlsx)
+   - ✅ **Legacy .doc**: Специальная обработка с информативным предупреждением и кнопкой скачивания
+   - ✅ **Изображения**: Все форматы изображений и технические схемы
+   - ✅ **Текстовые файлы**: Прямой просмотр в iframe
+   - ✅ **Офлайн режим**: PDF worker загружается локально (не с CDN)
+
+2. **PWA Mobile Application** (mobi/) - ГОТОВО К УСТАНОВКЕ
+   - ✅ **Полноценное мобильное приложение** с Progressive Web App функциональностью
+   - ✅ **Офлайн режим**: Service Worker с умным кэшированием API и статических ресурсов
+   - ✅ **Кросс-порт кэширование**: API запросы кэшируются по pathname (работает с разными портами)
+   - ✅ **Мобильная навигация**: Удобный нижний таббар для смартфонов
+   - ✅ **QR Сканер**: Интерфейс для сканирования QR-кодов объектов
+   - ✅ **Оптимизация для мобильных**: Адаптивный дизайн и touch-friendly интерфейс
+   - 📱 **Установка на устройство**: SVG иконки готовы, инструменты для генерации PNG включены
+   - 💾 **IndexedDB готовность**: Подготовлено для локального хранения данных
+   - 📝 **Документация**: Полный README с инструкциями по генерации иконок
+
+3. **Replit Environment Setup**
+   - GitHub Import Completed: Successfully imported and configured the project for Replit environment
+   - Database Setup: Connected to Replit PostgreSQL database (Neon-backed)
+   - Pushed database schema using Drizzle ORM (`npm run db:push`)
+   - Seeded initial data including admin user, roles, permissions, and sample data
+   - Development Workflow: Configured development server on port 5000 (required for Replit webview)
+   - Vite configured with `allowedHosts: true` for Replit proxy compatibility
+   - Express server properly configured with host `0.0.0.0:5000`
+   - Deployment Configuration: Set up autoscale deployment target
+   - Build command: `npm run build`
+   - Start command: `npm start`
+
+4. **Default Credentials**: 
+   - Username: `admin`
+   - Password: `admin123`
+
 ### Critical Production Fixes
+
+#### Document Viewer Browser Compatibility
+1. **PDF.js Worker**: Локальная загрузка через `import.meta.url` вместо CDN для офлайн работы
+2. **docx-preview Integration**: Browser-safe библиотека с динамической генерацией стилей
+3. **Word Viewer Ref Management**: Контейнер всегда монтируется с loading overlay для корректной работы
+4. **Legacy .doc Handling**: Специальное amber предупреждение с большой кнопкой скачивания
+
+#### Previous Production Fixes
 1. **install.sh Security Fix**: Added `set -a; source .env; set +a` to properly export and preserve SESSION_SECRET and other sensitive environment variables when reusing existing .env files
 2. **Role-Based Menu Permissions**: Implemented baseline view permissions for non-admin roles
    - Менеджер документации: dashboard, objects, documents, org_structure, training, audit (6 permissions)
