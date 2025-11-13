@@ -25,9 +25,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <h2 className="text-lg font-semibold hidden lg:block">Система управления документацией</h2>
             </div>
-            <div className="flex items-center gap-2">
-              <GlobalSearch />
-              <NotificationPanel />
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="hidden md:flex items-center gap-2">
+                <GlobalSearch />
+                <NotificationPanel />
+              </div>
               <ThemeToggle />
               <UserMenu />
             </div>
