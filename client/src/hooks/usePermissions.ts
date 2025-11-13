@@ -6,10 +6,17 @@ interface Permission {
   action: string;
 }
 
+interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  isSystem?: boolean;
+}
+
 interface AuthResponse {
   user: any;
   permissions: Permission[];
-  roles: any[];
+  roles: Role[];
 }
 
 export function usePermissions() {
@@ -32,6 +39,16 @@ export function usePermissions() {
     );
   };
 
+  const isAdmin = (): boolean => {
+    if (!data?.roles) return false;
+    return data.roles.some((role) => role.name.toLowerCase() === 'admin' || role.name.toLowerCase() === 'администратор');
+  };
+
+  const hasRole = (roleName: string): boolean => {
+    if (!data?.roles) return false;
+    return data.roles.some((role) => role.name.toLowerCase() === roleName.toLowerCase());
+  };
+
   const canCreate = (module: string) => hasPermission(module, 'create');
   const canEdit = (module: string) => hasPermission(module, 'edit');
   const canDelete = (module: string) => hasPermission(module, 'delete');
@@ -45,6 +62,8 @@ export function usePermissions() {
     isLoading,
     isError,
     hasPermission,
+    isAdmin,
+    hasRole,
     canCreate,
     canEdit,
     canDelete,
