@@ -262,8 +262,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/users', isAuthenticated, hasPermission('users', 'view'), async (req, res) => {
     try {
       const users = await storage.getAllUsers();
-      const usersWithoutPasswords = users.map(({ password, ...user }) => user);
-      res.json(usersWithoutPasswords);
+      const usersWithRoles = await Promise.all(
+        users.map(async (user) => {
+          const { password, ...userWithoutPassword } = user;
+          const roles = await storage.getUserRoles(user.id);
+          const validRoles = roles
+            .map(r => r.role)
+            .filter(role => role && role.id && role.name);
+          return {
+            ...userWithoutPassword,
+            roles: validRoles
+          };
+        })
+      );
+      res.json(usersWithRoles);
     } catch (error) {
       res.status(500).json({ error: 'Ошибка при получении пользователей' });
     }
@@ -395,6 +407,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/users/:id/permissions', isAuthenticated, hasPermission('users', 'view'), validateUUID('id'), async (req, res) => {
+    try {
+      const user = await storage.getUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+      }
+      const permissions = await storage.getUserPermissions(req.params.id);
+      const userRoles = await storage.getUserRoles(req.params.id);
+      const role = userRoles.length > 0 ? userRoles[0].role : null;
+      
+      res.json({ 
+        permissions,
+        role
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Ошибка при получении прав пользователя' });
+    }
+  });
+
+  app.put('/api/users/:id/role', isAuthenticated, hasPermission('users', 'edit'), validateUUID('id'), async (req, res) => {
+    try {
+      const { roleId } = req.body;
+      
+      if (!roleId) {
+        return res.status(400).json({ error: 'Необходимо указать roleId' });
+      }
+      
+      const user = await storage.getUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+      }
+      
+      const role = await storage.getRoleById(roleId);
+      if (!role) {
+        return res.status(404).json({ error: 'Роль не найдена' });
+      }
+      
+      const currentRoles = await storage.getUserRoles(req.params.id);
+      const validCurrentRoles = currentRoles.filter(ur => ur.role && ur.role.id);
+      for (const userRole of validCurrentRoles) {
+        await storage.removeRoleFromUser(req.params.id, userRole.role.id);
+      }
+      
+      await storage.assignRoleToUser(req.params.id, roleId);
+      
+      await storage.insertAuditLog({
+        userId: (req.user as any).id,
+        action: 'update',
+        resource: 'user_role',
+        resourceId: req.params.id,
+        details: { newRoleId: roleId },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent')
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Ошибка при обновлении роли пользователя' });
     }
   });
 
@@ -754,7 +827,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/document-categories', isAuthenticated, hasPermission('documents', 'create'), async (req, res) => {
+  app.post('/api/document-categories', isAuthenticated, hasPermission('documents', 'upload'), async (req, res) => {
     try {
       const data = insertDocumentCategorySchema.parse(req.body);
       const category = await storage.insertDocumentCategory(data);
@@ -812,7 +885,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/documents/upload', isAuthenticated, hasPermission('documents', 'create'), upload.single('file'), async (req, res) => {
+  app.post('/api/documents/upload', isAuthenticated, hasPermission('documents', 'upload'), upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'Файл не загружен' });
@@ -1258,7 +1331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ========== BATCH UPLOAD ROUTES ==========
-  app.post('/api/documents/batch-upload', isAuthenticated, hasPermission('documents', 'create'), upload.array('files', 10), async (req, res) => {
+  app.post('/api/documents/batch-upload', isAuthenticated, hasPermission('documents', 'upload'), upload.array('files', 10), async (req, res) => {
     try {
       if (!req.files || (req.files as Express.Multer.File[]).length === 0) {
         return res.status(400).json({ error: 'Файлы не загружены' });
@@ -1364,7 +1437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/templates', isAuthenticated, hasPermission('documents', 'create'), upload.single('file'), async (req, res) => {
+  app.post('/api/templates', isAuthenticated, hasPermission('documents', 'upload'), upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'Файл не загружен' });
@@ -1415,7 +1488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/templates/:id/create-document', isAuthenticated, hasPermission('documents', 'create'), async (req, res) => {
+  app.post('/api/templates/:id/create-document', isAuthenticated, hasPermission('documents', 'upload'), async (req, res) => {
     try {
       const document = await storage.createDocumentFromTemplate(
         req.params.id,
