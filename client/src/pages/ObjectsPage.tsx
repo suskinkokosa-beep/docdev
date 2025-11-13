@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, QrCode, Search, Download } from "lucide-react";
+import { Plus, QrCode, Search, Download, Camera } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -16,6 +17,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ObjectFormDialog } from "@/components/ObjectFormDialog";
 import { QRCodeDialog } from "@/components/QRCodeDialog";
+import { QRScanner } from "@/components/QRScanner";
+import { useToast } from "@/hooks/use-toast";
 
 interface Object {
   id: string;
@@ -34,6 +37,8 @@ export function ObjectsPage() {
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [qrObject, setQrObject] = useState<Object | null>(null);
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
 
   const { data: objects = [], isLoading } = useQuery<Object[]>({
     queryKey: ['/api/objects'],
@@ -56,6 +61,34 @@ export function ObjectsPage() {
     );
   });
 
+  const handleQRScan = async (qrCode: string) => {
+    try {
+      // Найти объект по QR коду
+      const object = objects.find(obj => obj.code === qrCode);
+      
+      if (object) {
+        toast({
+          title: "Объект найден",
+          description: `Переход к документам объекта ${object.name}`,
+        });
+        // Перенаправить на страницу документов объекта
+        navigate(`/objects/${object.id}/documents`);
+      } else {
+        toast({
+          title: "Объект не найден",
+          description: `QR код "${qrCode}" не соответствует ни одному объекту`,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось обработать QR код",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
@@ -76,17 +109,20 @@ export function ObjectsPage() {
           <h1 className="text-2xl font-semibold">Объекты</h1>
           <p className="text-muted-foreground">Управление объектами газопроводов</p>
         </div>
-        <Button 
-          data-testid="button-add-object"
-          onClick={() => {
-            setSelectedObject(undefined);
-            setDialogMode("create");
-            setDialogOpen(true);
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Добавить объект
-        </Button>
+        <div className="flex gap-2">
+          <QRScanner onScan={handleQRScan} />
+          <Button 
+            data-testid="button-add-object"
+            onClick={() => {
+              setSelectedObject(undefined);
+              setDialogMode("create");
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Добавить объект
+          </Button>
+        </div>
       </div>
 
       <Card>
