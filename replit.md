@@ -69,24 +69,21 @@ The database includes tables for:
 
 ## Recent Changes
 
-### November 12, 2025 - Database Setup Completed
-- ✅ PostgreSQL database successfully provisioned
-- ✅ Database migrations applied (npm run db:push)
+### November 12, 2025 - Fresh GitHub Clone Import Complete
+- ✅ Fresh clone from GitHub successfully imported to Replit
+- ✅ All dependencies installed (npm install - 497 packages)
+- ✅ PostgreSQL database already provisioned (using existing DATABASE_URL)
+- ✅ Database migrations applied successfully (npm run db:push)
 - ✅ Database seeded with test data (npm run db:seed)
-- ✅ Server running on port 5000 and fully operational
-- ✅ All API endpoints responding correctly
-- ✅ Authentication working (admin/admin123)
-- ✅ System ready for use
-
-### November 11, 2025 - Initial Setup
-- ✅ Fresh clone from GitHub successfully imported
-- ✅ All dependencies installed (npm install)
-- ✅ Vite configured for Replit proxy (allowedHosts: true added)
-- ✅ Database migrations applied (npm run db:push)
-- ✅ Database seeded with test data (npm run db:seed)
-- ✅ Workflow configured on port 5000 (dev-server)
+  - Created 21 permissions, 3 roles, 2 UMGs, 3 services, 3 departments
+  - Created 2 objects, 5 document categories, 3 documents
+  - Created 2 training programs, 1 test with 2 questions
+  - Created admin user (login: admin, password: admin123)
+- ✅ Workflow configured and running on port 5000 (dev-server)
+- ✅ Vite already configured for Replit proxy (allowedHosts: true)
 - ✅ Deployment configured (autoscale mode with build and run commands)
 - ✅ Application fully functional and ready to use
+- ✅ Login page loading correctly, authentication system operational
 
 ### Feature Implementation
 - ✅ **ProfilePage** (/profile): Просмотр информации пользователя и смена пароля
@@ -110,11 +107,85 @@ The database includes tables for:
   - TrainingProgramDialog с useEffect для синхронизации formData
   - Dropdown меню с edit/delete и AlertDialog для подтверждения удаления
 
+### November 12, 2025 - User Role Assignment & Test Creation Updates
+- ✅ **User Role & Access Management**: Расширена система назначения ролей пользователям
+  - API: POST/PUT /api/users с поддержкой roleId, umgIds, serviceIds
+  - Storage: assignUserRole, clearUserUmgAccess, clearUserServiceAccess
+  - UserFormDialog: добавлены поля для выбора роли, УМГ и служб с чекбоксами
+  - Автоматическое назначение роли и доступов при создании/обновлении пользователя
+  - Форма увеличена (max-h-[80vh] overflow-y-auto) для всех полей
+
+- ✅ **QR Code Scanner Enhancement**: Улучшена функциональность QR сканера
+  - ObjectsPage: добавлен QRScanner с автоматической навигацией
+  - При сканировании QR кода → переход на /objects/:id/documents
+  - Toast уведомления при успехе/ошибке сканирования
+  - Поиск объекта по QR коду в памяти загруженных объектов
+
+- ✅ **Test Creation UI**: Добавлен интерфейс создания тестов
+  - Компонент TestFormDialog для создания тестов с вопросами
+  - Динамическое добавление/удаление вопросов и вариантов ответов
+  - Выбор правильного ответа через radio buttons
+  - API: POST /api/test-questions для создания вопросов теста
+  - Интеграция с существующим POST /api/tests endpoint
+
 ### Bug Fixes
 - ✅ Исправлены все кнопки без event handlers
 - ✅ Исправлены все useQuery вызовы - добавлены queryFn
 - ✅ Исправлены пустые SelectItem values (использование "all"/"none" sentinel values)
 - ✅ Исправлена структура данных ProfilePage для работы с массивом roles
+- ✅ Добавлен недостающий API endpoint POST /api/test-questions
+
+## Рекомендации по улучшению проекта
+
+### Приоритет: Высокий
+1. **UI для прохождения тестов**: Создать компонент для прохождения тестов с результатами
+   - Отображение вопросов и вариантов ответов
+   - Подсчет результатов и отображение прогресса
+   - Автоматическая выдача сертификатов при успешном прохождении
+
+2. **Транзакции для назначения доступов**: Обернуть назначение ролей и доступов в транзакцию
+   - Предотвратить частичное сохранение данных при ошибках
+   - Использовать `db.transaction()` в storage.ts
+
+3. **Валидация загружаемых файлов**: Усилить проверку файлов
+   - Проверка MIME-типов на сервере
+   - Ограничение размеров файлов по типу документа
+   - Антивирусная проверка загружаемых файлов
+
+### Приоритет: Средний
+4. **Пагинация для больших списков**: Добавить пагинацию
+   - Документы, пользователи, объекты
+   - Server-side пагинация с параметрами page/limit
+
+5. **Поиск и фильтрация**: Расширить функционал поиска
+   - Полнотекстовый поиск по документам
+   - Фильтры по датам, статусам, категориям
+   - Сохранение фильтров в URL для шаринга
+
+6. **Уведомления в реальном времени**: WebSocket для live-обновлений
+   - Уведомления о новых документах
+   - Изменения в статусах объектов
+   - Результаты тестов
+
+7. **Версионирование документов**: Полная система версий
+   - История изменений документов
+   - Сравнение версий
+   - Откат к предыдущим версиям
+
+### Приоритет: Низкий
+8. **Экспорт отчетов**: Генерация PDF/Excel отчетов
+   - Отчеты по объектам
+   - Статистика обучения
+   - Журнал аудита
+
+9. **Мобильное приложение**: PWA или нативное приложение
+   - Офлайн-режим для чтения документов
+   - Push-уведомления
+   - Улучшенный QR сканер
+
+10. **Темная тема**: Добавить переключатель темы
+    - Сохранение предпочтений пользователя
+    - Автоматическое переключение по времени суток
 
 ## Notes
 - The application is in Russian language
