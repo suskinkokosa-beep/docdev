@@ -32,11 +32,19 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
     }
   };
 
+  const getFileUrl = () => {
+    if (!document.filePath) return '';
+    const fileName = document.filePath.split('/').pop() || '';
+    return `/uploads/${fileName}`;
+  };
+
   const renderContent = () => {
+    const fileUrl = getFileUrl();
+    
     if (document.mimeType.startsWith('image/')) {
       return (
         <img 
-          src={`/uploads/${document.fileName}`} 
+          src={fileUrl} 
           alt={document.name}
           className="w-full h-auto rounded-lg"
         />
@@ -44,7 +52,7 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
     } else if (document.mimeType === 'application/pdf') {
       return (
         <iframe 
-          src={`/uploads/${document.fileName}`}
+          src={fileUrl}
           className="w-full h-[600px] rounded-lg"
           title={document.name}
         />
@@ -52,7 +60,7 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
     } else if (document.mimeType.startsWith('text/')) {
       return (
         <iframe 
-          src={`/uploads/${document.fileName}`}
+          src={fileUrl}
           className="w-full h-[600px] rounded-lg"
           title={document.name}
         />
