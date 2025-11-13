@@ -37,9 +37,60 @@ const ALLOWED_MIME_TYPES = [
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
 // Функция для очистки имени файла от path traversal
+// Сохраняет кириллические, Unicode и эмодзи символы
 function sanitizeFileName(fileName: string): string {
-  // Удаляем path traversal атаки
-  return path.basename(fileName.replace(/\.\./g, '').replace(/[\/\\]/g, '_'));
+  // 1. Нормализуем в NFC (Canonical Composition) для избежания decomposed forms
+  let cleaned = fileName.normalize('NFC');
+  
+  // 2. Удаляем опасные control characters и невидимые Unicode символы
+  // Удаляем: C0/C1 controls, zero-width characters, направляющие Unicode (U+202E)
+  cleaned = cleaned
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, '')  // C0 and C1 control characters
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '');  // Zero-width and directional marks
+  
+  // 3. Удаляем path traversal атаки
+  cleaned = cleaned
+    .replace(/\.\./g, '')  // Удаляем ..
+    .replace(/[\/\\]/g, '_');  // Заменяем directory separators на _
+  
+  // 4. Заменяем недопустимые в Windows/Mac/Linux символы
+  cleaned = cleaned.replace(/[<>:"|?*]/g, '_');
+  
+  // 5. Trim пробелов и точек (могут создать проблемы в файловых системах)
+  cleaned = cleaned.trim().replace(/^\.+|\.+$/g, '');
+  
+  // 6. Схлопываем множественные пробелы и underscores
+  cleaned = cleaned
+    .replace(/\s+/g, ' ')  // Множественные пробелы в один
+    .replace(/_+/g, '_')  // Множественные underscores в один
+    .replace(/\s*_\s*/g, '_');  // Пробелы вокруг underscores
+  
+  // 7. Защита от Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+  // Проверяем basename (без расширения) case-insensitive
+  const lastDotIndex = cleaned.lastIndexOf('.');
+  const basename = lastDotIndex > 0 ? cleaned.substring(0, lastDotIndex) : cleaned;
+  const extension = lastDotIndex > 0 ? cleaned.substring(lastDotIndex) : '';
+  
+  const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+  let safeName = cleaned;
+  
+  if (reservedNames.test(basename)) {
+    // Добавляем prefix underscore для Windows reserved names
+    safeName = '_' + cleaned;
+  }
+  
+  // 8. Ограничиваем длину (максимум 255 байт для большинства файловых систем)
+  // Используем Buffer для правильного подсчета UTF-8 байтов
+  const maxBytes = 255;
+  let encoded = Buffer.from(safeName, 'utf-8');
+  if (encoded.length > maxBytes) {
+    // Обрезаем по байтам, затем декодируем обратно (обрабатываем обрезанные multi-byte символы)
+    encoded = encoded.slice(0, maxBytes);
+    safeName = encoded.toString('utf-8').replace(/[\uFFFD]/g, '');  // Удаляем replacement characters
+  }
+  
+  // 9. Fallback на 'file' если имя стало пустым
+  return safeName || 'file';
 }
 
 // Функция для валидации UUID

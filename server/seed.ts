@@ -39,6 +39,9 @@ async function seed() {
     // 1. Создание прав доступа
     console.log("Создание прав доступа...");
     const permissionsList = [
+      // Dashboard
+      { module: "dashboard", action: "view", description: "Просмотр главной страницы" },
+      
       // Пользователи
       { module: "users", action: "view", description: "Просмотр пользователей" },
       { module: "users", action: "create", description: "Создание пользователей" },
@@ -58,8 +61,8 @@ async function seed() {
       { module: "documents", action: "delete", description: "Удаление документов" },
       
       // Оргструктура
-      { module: "orgstructure", action: "view", description: "Просмотр оргструктуры" },
-      { module: "orgstructure", action: "edit", description: "Редактирование оргструктуры" },
+      { module: "org_structure", action: "view", description: "Просмотр оргструктуры" },
+      { module: "org_structure", action: "edit", description: "Редактирование оргструктуры" },
       
       // Роли
       { module: "roles", action: "view", description: "Просмотр ролей" },
@@ -75,6 +78,10 @@ async function seed() {
       // Аудит
       { module: "audit", action: "view", description: "Просмотр журнала аудита" },
       { module: "audit", action: "export", description: "Экспорт журнала аудита" },
+      
+      // Настройки
+      { module: "settings", action: "view", description: "Просмотр настроек" },
+      { module: "settings", action: "edit", description: "Редактирование настроек" },
     ];
 
     await db.insert(permissions).values(permissionsList).onConflictDoNothing();
@@ -119,6 +126,38 @@ async function seed() {
     }));
     await db.insert(rolePermissions).values(adminPermissions).onConflictDoNothing();
     console.log("✓ Администратору назначены все права");
+
+    // 3.5 Назначение baseline view permissions для non-admin ролей
+    console.log("Назначение прав менеджеру документации и инженеру...");
+    
+    const resolvePermissionId = (module: string, action: string) => {
+      const permission = createdPermissions.find((perm: Permission) => perm.module === module && perm.action === action);
+      if (!permission) {
+        throw new Error(`Permission ${module}:${action} not found. Ensure it exists in permissionsList.`);
+      }
+      return permission.id;
+    };
+
+    if (!docManagerRole || !engineerRole) {
+      throw new Error("Обязательные системные роли не найдены");
+    }
+
+    const docManagerViewModules = ["dashboard", "objects", "documents", "org_structure", "training", "audit"];
+    const engineerViewModules = ["dashboard", "objects", "documents", "org_structure", "training"];
+
+    await db.insert(rolePermissions).values([
+      ...docManagerViewModules.map((module) => ({
+        roleId: docManagerRole.id,
+        permissionId: resolvePermissionId(module, "view"),
+      })),
+      ...engineerViewModules.map((module) => ({
+        roleId: engineerRole.id,
+        permissionId: resolvePermissionId(module, "view"),
+      })),
+    ]).onConflictDoNothing();
+    
+    console.log("✓ Менеджеру документации назначено 6 прав просмотра");
+    console.log("✓ Инженеру назначено 5 прав просмотра");
 
     // 4. Создание администратора
     console.log("Создание администратора...");
