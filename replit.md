@@ -69,20 +69,44 @@ The database includes tables for:
 
 ## Recent Changes
 
-### November 13, 2025 - Fresh GitHub Clone Import Complete
+### November 13, 2025 - Document Viewing & Download Fixes
+- ✅ **Исправлен просмотр документов**: Добавлено обслуживание статических файлов из /uploads
+  - Добавлен `express.static` middleware для директории uploads в server/index.ts
+  - Теперь документы (PDF, изображения) корректно отображаются в DocumentViewer
+  - Исправлен X-Frame-Options с DENY на SAMEORIGIN для разрешения iframe просмотра
+  
+- ✅ **Исправлено скачивание документов с кириллическими именами**:
+  - Добавлена правильная кодировка UTF-8 в заголовке Content-Disposition (RFC 2231)
+  - Исправлена логика резолвинга путей к файлам (использование fileName вместо filePath)
+  - Теперь при скачивании файлов с русскими названиями имя отображается корректно
+  
+- ✅ **Создание тестовых файлов**: Добавлены тестовые файлы для проверки функционала
+  - tech_ks1.pdf, protocol.docx, schema_gp12.dwg
+  
+- ✅ **Безопасность**: Сохранена защита от path traversal атак при работе с файлами
+
+### November 13, 2025 - GitHub Import Successfully Configured for Replit
 - ✅ Fresh clone from GitHub successfully imported to Replit
 - ✅ All dependencies installed (npm install - 497 packages)
-- ✅ PostgreSQL database provisioned (DATABASE_URL configured)
-- ✅ Database migrations applied successfully (npm run db:push)
-- ✅ Database seeded with test data (npm run db:seed)
+- ✅ PostgreSQL database already provisioned (DATABASE_URL configured)
+- ✅ Database schema pushed successfully (npm run db:push)
+- ✅ Database seeded with initial test data (npm run db:seed)
   - Created 21 permissions, 3 roles, 2 UMGs, 3 services, 3 departments
   - Created 2 objects, 5 document categories, 3 documents
   - Created 2 training programs, 1 test with 2 questions
   - Created admin user (login: admin, password: admin123)
-- ✅ Workflow configured and running on port 5000 (dev-server)
-- ✅ Vite already configured for Replit proxy (allowedHosts: true in vite.config.ts)
-- ✅ Server configured to bind to 0.0.0.0:5000 for frontend access
-- ✅ Deployment configured (autoscale mode with build and run commands)
+- ✅ Development workflow configured and running on port 5000
+- ✅ Vite configuration verified for Replit environment:
+  - Server host: 0.0.0.0:5173 (Vite dev server)
+  - allowedHosts: true (enables Replit proxy in iframe)
+  - HMR configured for WebSocket over wss on port 443
+- ✅ Express server configured correctly:
+  - Binds to 0.0.0.0:5000 for public access
+  - Serves both API (/api/*) and frontend in development
+  - CORS configured for development environment
+- ✅ Deployment configuration set up (autoscale mode):
+  - Build: npm run build (Vite + esbuild)
+  - Run: npm start (production server)
 - ✅ .gitignore created with Node.js/TypeScript best practices
 - ✅ Application fully functional and ready to use
 - ✅ Login page loading correctly, authentication system operational
