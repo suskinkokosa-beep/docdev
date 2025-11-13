@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -29,6 +30,7 @@ export function DocumentsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const { canUpload } = usePermissions();
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ['/api/documents'],
@@ -65,13 +67,15 @@ export function DocumentsPage() {
           <h1 className="text-2xl font-semibold">Документы</h1>
           <p className="text-muted-foreground">Централизованное хранилище документации</p>
         </div>
-        <Button 
-          data-testid="button-upload-document"
-          onClick={() => setDialogOpen(true)}
-        >
-          <Upload className="mr-2 h-4 w-4" />
-          Загрузить документ
-        </Button>
+        {canUpload('documents') && (
+          <Button 
+            data-testid="button-upload-document"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Загрузить документ
+          </Button>
+        )}
       </div>
 
       <Card>

@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Plus, Search, MoreVertical } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -19,7 +20,18 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserFormDialog } from "@/components/UserFormDialog";
 import { UserPermissionsDialog } from "@/components/UserPermissionsDialog";
@@ -50,8 +62,11 @@ export function UsersPage() {
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
   const [permissionsUser, setPermissionsUser] = useState<User | undefined>(undefined);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { canCreate, canEdit, canDelete } = usePermissions();
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/users'],
@@ -104,6 +119,36 @@ export function UsersPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка удаления пользователя');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users'] });
+      toast({
+        title: "Успешно",
+        description: "Пользователь удален",
+      });
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Ошибка",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleToggleStatus = (user: User) => {
     const newStatus = user.status === 'active' ? 'inactive' : 'active';
     toggleStatusMutation.mutate({ userId: user.id, newStatus });
@@ -112,6 +157,17 @@ export function UsersPage() {
   const handleManagePermissions = (user: User) => {
     setPermissionsUser(user);
     setPermissionsDialogOpen(true);
+  };
+
+  const handleDeleteUser = (user: User) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (userToDelete) {
+      deleteMutation.mutate(userToDelete.id);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -134,17 +190,19 @@ export function UsersPage() {
           <h1 className="text-2xl font-semibold">Пользователи</h1>
           <p className="text-muted-foreground">Управление пользователями системы</p>
         </div>
-        <Button 
-          data-testid="button-add-user"
-          onClick={() => {
-            setSelectedUser(undefined);
-            setDialogMode("create");
-            setDialogOpen(true);
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Добавить пользователя
-        </Button>
+        {canCreate('users') && (
+          <Button 
+            data-testid="button-add-user"
+            onClick={() => {
+              setSelectedUser(undefined);
+              setDialogMode("create");
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Добавить пользователя
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -222,22 +280,39 @@ export function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {
-                              setSelectedUser(user);
-                              setDialogMode("edit");
-                              setDialogOpen(true);
-                            }}>
-                              Редактировать
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleManagePermissions(user)}>
-                              Права доступа
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              className="text-destructive"
-                              onClick={() => handleToggleStatus(user)}
-                            >
-                              {user.status === 'active' ? 'Деактивировать' : 'Активировать'}
-                            </DropdownMenuItem>
+                            {canEdit('users') && (
+                              <DropdownMenuItem onClick={() => {
+                                setSelectedUser(user);
+                                setDialogMode("edit");
+                                setDialogOpen(true);
+                              }}>
+                                Редактировать
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit('users') && (
+                              <DropdownMenuItem onClick={() => handleManagePermissions(user)}>
+                                Права доступа
+                              </DropdownMenuItem>
+                            )}
+                            {canEdit('users') && (
+                              <DropdownMenuItem 
+                                onClick={() => handleToggleStatus(user)}
+                              >
+                                {user.status === 'active' ? 'Деактивировать' : 'Активировать'}
+                              </DropdownMenuItem>
+                            )}
+                            {canDelete('users') && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-destructive"
+                                  onClick={() => handleDeleteUser(user)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Удалить пользователя
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -265,6 +340,24 @@ export function UsersPage() {
           user={permissionsUser}
         />
       )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Подтверждение удаления</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить пользователя "{userToDelete?.fullName}" ({userToDelete?.username})? 
+              Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
