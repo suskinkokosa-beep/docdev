@@ -11,12 +11,14 @@ import { Download } from "lucide-react";
 interface QRCodeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  objectId: string;
   objectCode: string;
   objectName: string;
 }
 
-export function QRCodeDialog({ open, onOpenChange, objectCode, objectName }: QRCodeDialogProps) {
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(objectCode)}`;
+export function QRCodeDialog({ open, onOpenChange, objectId, objectCode, objectName }: QRCodeDialogProps) {
+  const documentUrl = `${window.location.origin}/objects/${objectId}/documents`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(documentUrl)}`;
 
   const handleDownload = () => {
     const link = document.createElement('a');
