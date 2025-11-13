@@ -496,8 +496,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/roles', isAuthenticated, hasPermission('roles', 'create'), async (req, res) => {
     try {
-      const data = insertRoleSchema.parse(req.body);
+      const { permissionIds, ...roleData } = req.body;
+      const data = insertRoleSchema.parse(roleData);
       const role = await storage.insertRole(data);
+      
+      if (permissionIds && Array.isArray(permissionIds)) {
+        for (const permissionId of permissionIds) {
+          await storage.assignPermissionToRole(role.id, permissionId);
+        }
+      }
+      
+      await storage.insertAuditLog({
+        userId: (req.user as any).id,
+        action: 'create',
+        resource: 'role',
+        resourceId: role.id,
+        details: { name: role.name, permissionsCount: permissionIds?.length || 0 },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent')
+      });
+      
       res.json(role);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -506,8 +524,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/roles/:id', isAuthenticated, hasPermission('roles', 'edit'), validateUUID('id'), async (req, res) => {
     try {
-      const updateData = insertRoleSchema.partial().parse(req.body);
+      const { permissionIds, ...roleData } = req.body;
+      const updateData = insertRoleSchema.partial().parse(roleData);
       const role = await storage.updateRole(req.params.id, updateData);
+      
+      if (permissionIds !== undefined && Array.isArray(permissionIds)) {
+        const currentPermissions = await storage.getRolePermissions(req.params.id);
+        const currentPermissionIds = currentPermissions.map(p => p.permission.id);
+        
+        const toAdd = permissionIds.filter((id: string) => !currentPermissionIds.includes(id));
+        const toRemove = currentPermissionIds.filter(id => !permissionIds.includes(id));
+        
+        for (const permissionId of toAdd) {
+          await storage.assignPermissionToRole(req.params.id, permissionId);
+        }
+        
+        for (const permissionId of toRemove) {
+          await storage.removePermissionFromRole(req.params.id, permissionId);
+        }
+      }
+      
+      await storage.insertAuditLog({
+        userId: (req.user as any).id,
+        action: 'update',
+        resource: 'role',
+        resourceId: role.id,
+        details: { name: role.name },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent')
+      });
+      
       res.json(role);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

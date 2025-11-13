@@ -55,7 +55,9 @@ async function seed() {
       
       // Роли
       { module: "roles", action: "view", description: "Просмотр ролей" },
+      { module: "roles", action: "create", description: "Создание ролей" },
       { module: "roles", action: "edit", description: "Редактирование ролей" },
+      { module: "roles", action: "delete", description: "Удаление ролей" },
       
       // Обучение
       { module: "training", action: "view", description: "Просмотр программ обучения" },
