@@ -181,32 +181,95 @@ apt-get install -y build-essential python3 git curl lsof openssl postgresql-clie
 echo -e "${GREEN}✓ Дополнительные зависимости установлены${NC}"
 echo ""
 
-# Ввод данных для базы данных
-echo -e "${YELLOW}[7/17] Настройка базы данных${NC}"
-echo -e "${CYAN}═══════════════════════════════════════${NC}"
-echo -e "${CYAN}  Конфигурация PostgreSQL${NC}"
-echo -e "${CYAN}═══════════════════════════════════════${NC}"
-echo ""
+# Проверка существующего .env файла
+USE_EXISTING_ENV=false
+if [ -f "/docdev/.env" ]; then
+    echo -e "${YELLOW}═══════════════════════════════════════${NC}"
+    echo -e "${GREEN}✓ Найден существующий .env файл${NC}"
+    echo -e "${YELLOW}═══════════════════════════════════════${NC}"
+    echo ""
+    read -p "Использовать существующую конфигурацию из .env? (Y/n): " USE_ENV
+    USE_ENV=${USE_ENV:-Y}
+    
+    if [ "$USE_ENV" = "Y" ] || [ "$USE_ENV" = "y" ]; then
+        USE_EXISTING_ENV=true
+        echo -e "${GREEN}✓ Загрузка конфигурации из существующего .env...${NC}"
+        
+        # Загрузка и экспорт переменных из .env
+        # Используем set -a для автоматического экспорта всех переменных
+        set -a
+        source /docdev/.env
+        set +a
+        
+        # Извлечение параметров из DATABASE_URL
+        if [ ! -z "$DATABASE_URL" ]; then
+            DB_USER=$(echo $DATABASE_URL | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+            DB_PASSWORD=$(echo $DATABASE_URL | sed -n 's/.*:\/\/[^:]*:\([^@]*\)@.*/\1/p')
+            DB_HOST=$(echo $DATABASE_URL | sed -n 's/.*@\([^:\/]*\).*/\1/p')
+            DB_PORT=$(echo $DATABASE_URL | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+            DB_NAME=$(echo $DATABASE_URL | sed -n 's/.*\/\([^?]*\).*/\1/p')
+        fi
+        
+        # Если не удалось извлечь, использовать PGHOST и т.д.
+        DB_HOST=${DB_HOST:-${PGHOST:-localhost}}
+        DB_PORT=${DB_PORT:-${PGPORT:-5432}}
+        DB_NAME=${DB_NAME:-${PGDATABASE:-doc_management}}
+        DB_USER=${DB_USER:-${PGUSER:-doc_user}}
+        DB_PASSWORD=${DB_PASSWORD:-${PGPASSWORD}}
+        APP_PORT=${PORT:-5000}
+        DOMAIN=${DOMAIN:-$(hostname -I | awk '{print $1}')}
+        
+        echo -e "${CYAN}Загруженная конфигурация:${NC}"
+        echo "  Хост БД: ${DB_HOST}"
+        echo "  Порт БД: ${DB_PORT}"
+        echo "  База данных: ${DB_NAME}"
+        echo "  Пользователь: ${DB_USER}"
+        echo "  Порт приложения: ${APP_PORT}"
+        echo "  Домен: ${DOMAIN}"
+        echo ""
+        read -p "Продолжить с этой конфигурацией? (Y/n): " CONFIRM
+        CONFIRM=${CONFIRM:-Y}
+        
+        if [ "$CONFIRM" != "Y" ] && [ "$CONFIRM" != "y" ]; then
+            USE_EXISTING_ENV=false
+            echo -e "${YELLOW}Будет создана новая конфигурация${NC}"
+            echo ""
+        fi
+    fi
+fi
 
-read -p "Хост PostgreSQL [localhost]: " DB_HOST
-DB_HOST=${DB_HOST:-localhost}
+# Ввод данных для базы данных (если не используем существующий .env)
+if [ "$USE_EXISTING_ENV" = false ]; then
+    echo -e "${YELLOW}[7/17] Настройка базы данных${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════${NC}"
+    echo -e "${CYAN}  Конфигурация PostgreSQL${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════${NC}"
+    echo ""
 
-read -p "Порт PostgreSQL [5432]: " DB_PORT
-DB_PORT=${DB_PORT:-5432}
+    read -p "Хост PostgreSQL [localhost]: " DB_HOST
+    DB_HOST=${DB_HOST:-localhost}
 
-read -p "Имя базы данных [doc_management]: " DB_NAME
-DB_NAME=${DB_NAME:-doc_management}
+    read -p "Порт PostgreSQL [5432]: " DB_PORT
+    DB_PORT=${DB_PORT:-5432}
 
-read -p "Пользователь PostgreSQL [doc_user]: " DB_USER
-DB_USER=${DB_USER:-doc_user}
+    read -p "Имя базы данных [doc_management]: " DB_NAME
+    DB_NAME=${DB_NAME:-doc_management}
 
-echo -e "${YELLOW}Введите пароль для пользователя ${DB_USER}:${NC}"
-read -s DB_PASSWORD
-echo ""
+    read -p "Пользователь PostgreSQL [doc_user]: " DB_USER
+    DB_USER=${DB_USER:-doc_user}
 
-if [ -z "$DB_PASSWORD" ]; then
-    echo -e "${RED}Ошибка: Пароль не может быть пустым${NC}"
-    exit 1
+    echo -e "${YELLOW}Введите пароль для пользователя ${DB_USER}:${NC}"
+    read -s DB_PASSWORD
+    echo ""
+
+    if [ -z "$DB_PASSWORD" ]; then
+        echo -e "${RED}Ошибка: Пароль не может быть пустым${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}[7/17] Настройка базы данных${NC}"
+    echo -e "${GREEN}✓ Используется существующая конфигурация${NC}"
+    echo ""
 fi
 
 echo ""
@@ -350,38 +413,50 @@ else
 fi
 echo ""
 
-# Ввод данных для приложения
-echo -e "${YELLOW}[8/17] Настройка приложения${NC}"
-echo ""
+# Ввод данных для приложения (если не используем существующий .env)
+if [ "$USE_EXISTING_ENV" = false ]; then
+    echo -e "${YELLOW}[8/17] Настройка приложения${NC}"
+    echo ""
 
-read -p "Порт приложения [5000]: " APP_PORT
-APP_PORT=${APP_PORT:-5000}
+    read -p "Порт приложения [5000]: " APP_PORT
+    APP_PORT=${APP_PORT:-5000}
 
-# Проверка что порт не занят
-if lsof -Pi :${APP_PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Порт ${APP_PORT} уже занят процессом:${NC}"
-    lsof -Pi :${APP_PORT} -sTCP:LISTEN || true
-    read -p "Остановить процесс и освободить порт? (y/n): " KILL_PROCESS
-    if [ "$KILL_PROCESS" = "y" ] || [ "$KILL_PROCESS" = "Y" ]; then
-        PID=$(lsof -Pi :${APP_PORT} -sTCP:LISTEN -t)
-        if [ ! -z "$PID" ]; then
-            kill -9 $PID 2>/dev/null || true
-            sleep 1
-            echo -e "${GREEN}✓ Порт освобожден${NC}"
+    # Проверка что порт не занят
+    if lsof -Pi :${APP_PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠ Порт ${APP_PORT} уже занят процессом:${NC}"
+        lsof -Pi :${APP_PORT} -sTCP:LISTEN || true
+        read -p "Остановить процесс и освободить порт? (y/n): " KILL_PROCESS
+        if [ "$KILL_PROCESS" = "y" ] || [ "$KILL_PROCESS" = "Y" ]; then
+            PID=$(lsof -Pi :${APP_PORT} -sTCP:LISTEN -t)
+            if [ ! -z "$PID" ]; then
+                kill -9 $PID 2>/dev/null || true
+                sleep 1
+                echo -e "${GREEN}✓ Порт освобожден${NC}"
+            fi
         fi
     fi
+
+    # Определение домена или IP
+    SERVER_IP=$(hostname -I | awk '{print $1}')
+    read -p "Домен для Nginx (или оставьте пустым для использования IP) [${SERVER_IP}]: " DOMAIN
+    DOMAIN=${DOMAIN:-${SERVER_IP}}
+
+    echo -e "${GREEN}✓ Домен/IP: ${DOMAIN}${NC}"
+    echo ""
+
+    # Генерация SESSION_SECRET
+    SESSION_SECRET=$(openssl rand -hex 32)
+else
+    echo -e "${YELLOW}[8/17] Настройка приложения${NC}"
+    echo -e "${GREEN}✓ Используется существующая конфигурация${NC}"
+    
+    # Сохраняем существующий SESSION_SECRET или генерируем новый
+    if [ -z "$SESSION_SECRET" ]; then
+        SESSION_SECRET=$(openssl rand -hex 32)
+        echo -e "${YELLOW}⚠ SESSION_SECRET не найден, генерируется новый${NC}"
+    fi
+    echo ""
 fi
-
-# Определение домена или IP
-SERVER_IP=$(hostname -I | awk '{print $1}')
-read -p "Домен для Nginx (или оставьте пустым для использования IP) [${SERVER_IP}]: " DOMAIN
-DOMAIN=${DOMAIN:-${SERVER_IP}}
-
-echo -e "${GREEN}✓ Домен/IP: ${DOMAIN}${NC}"
-echo ""
-
-# Генерация SESSION_SECRET
-SESSION_SECRET=$(openssl rand -hex 32)
 
 # Создание .env файла
 echo -e "${YELLOW}Создание .env файла...${NC}"
