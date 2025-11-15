@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, ChevronRight } from 'lucide-react';
+import { FileText, Download } from 'lucide-react';
 
 interface Document {
   id: string;

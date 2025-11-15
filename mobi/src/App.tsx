@@ -83,7 +83,8 @@ function App() {
       
       <main className="main-content">
         <Switch>
-          <Route path="/" component={HomePage} />
+          <Route path="/" component={ScannerPage} />
+          <Route path="/home" component={HomePage} />
           <Route path="/objects" component={ObjectsPage} />
           <Route path="/documents" component={DocumentsPage} />
           <Route path="/scanner" component={ScannerPage} />
@@ -92,7 +93,7 @@ function App() {
         </Switch>
       </main>
       
-      <Navigation user={user} onLogout={handleLogout} />
+      <Navigation onLogout={handleLogout} />
     </div>
   );
 }
