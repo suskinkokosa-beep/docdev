@@ -2,6 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import session from "express-session";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { insertUserSchema, insertRoleSchema, insertPermissionSchema, insertUmgSchema, insertServiceSchema, insertDepartmentSchema, insertObjectSchema, insertDocumentCategorySchema, insertTrainingProgramSchema } from "@shared/schema";
@@ -180,13 +182,32 @@ async function auditLog(action: any, resource: string, resourceId?: string, deta
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Настройка сессий
+  // Валидация SESSION_SECRET (обязательно для production)
+  if (!process.env.SESSION_SECRET) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('SESSION_SECRET must be set in production environment');
+    }
+    console.warn('⚠️  WARNING: SESSION_SECRET не установлен. Используется временный секрет для разработки.');
+    console.warn('⚠️  Установите SESSION_SECRET в .env для безопасной работы.');
+  }
+
+  // Настройка PostgreSQL session store для persistent сессий
+  const PgSession = connectPg(session);
+  const sessionStore = new PgSession({
+    pool: pool,
+    tableName: 'session',
+    createTableIfMissing: true,
+  });
+
+  // Настройка сессий с persistent store
   app.use(session({
-    secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+    store: sessionStore,
+    secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
     resave: false,
     saveUninitialized: false,
     cookie: { 
       secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000 // 24 часа
     }
   }));

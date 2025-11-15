@@ -1,112 +1,172 @@
 #!/bin/bash
 
-# Скрипт установки и настройки проекта для Ubuntu 20+
+# Скрипт установки и настройки проекта УправДок для Ubuntu 20+
+# Версия: 2.0 - Улучшенная с идемпотентностью и валидацией
 # Требует запуска под root
 
-set -e
+set -euo pipefail  # Строгий режим: exit при ошибках, неопределенных переменных, ошибках в pipe
 
 # Цвета для вывода
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly MAGENTA='\033[0;35m'
+readonly CYAN='\033[0;36m'
+readonly NC='\033[0m' # No Color
+
+# Глобальные переменные
+SKIP_CLEANUP=false
+INSTALL_LOG="/var/log/docdev-install.log"
+
+# Создаем директорию для логов если не существует
+mkdir -p "$(dirname "$INSTALL_LOG")"
+touch "$INSTALL_LOG" 2>/dev/null || INSTALL_LOG="/tmp/docdev-install.log"
+
+# Определение директории проекта - использует текущую директорию или /docdev
+if [ -f "package.json" ] && grep -q "rest-express" package.json 2>/dev/null; then
+    PROJECT_DIR="$(pwd)"
+elif [ -d "/docdev" ] && [ -f "/docdev/package.json" ]; then
+    PROJECT_DIR="/docdev"
+else
+    PROJECT_DIR="/docdev"
+fi
+
+# Функции логирования
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$INSTALL_LOG"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$INSTALL_LOG"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$INSTALL_LOG"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$INSTALL_LOG"
+}
 
 # Проверка запуска под root
 if [ "$EUID" -ne 0 ]; then 
-    echo -e "${RED}Ошибка: Скрипт должен быть запущен под root${NC}"
+    log_error "Скрипт должен быть запущен под root"
     echo "Используйте: sudo bash install.sh"
     exit 1
 fi
 
-# Флаг для контроля перезапуска сервиса
-SKIP_CLEANUP=false
+# Проверка Ubuntu 20+
+if ! grep -q "Ubuntu" /etc/os-release; then
+    log_error "Этот скрипт предназначен для Ubuntu"
+    exit 1
+fi
 
-# Trap для гарантии перезапуска сервиса при выходе
+UBUNTU_VERSION=$(lsb_release -rs | cut -d. -f1)
+if [ "$UBUNTU_VERSION" -lt 20 ]; then
+    log_error "Требуется Ubuntu 20.04 или новее. Обнаружена версия: $UBUNTU_VERSION"
+    exit 1
+fi
+
+# Trap для обработки ошибок и очистки
 cleanup() {
+    local exit_code=$?
     if [ "$SKIP_CLEANUP" = "true" ]; then
         return 0
     fi
-    if systemctl list-unit-files | grep -q "docdev.service"; then
-        echo -e "${YELLOW}Перезапуск сервиса docdev...${NC}"
-        systemctl start docdev 2>/dev/null || true
+    
+    if [ $exit_code -ne 0 ]; then
+        log_error "Установка прервана с кодом ошибки: $exit_code"
+        log_info "Проверьте лог: $INSTALL_LOG"
+    fi
+    
+    # Попытка перезапустить сервис при ошибке
+    if systemctl list-unit-files | grep -q "doc-management.service" 2>/dev/null; then
+        log_warning "Попытка перезапуска сервиса doc-management..."
+        systemctl start doc-management 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Установка системы управления документацией${NC}"
+echo -e "${GREEN} УправДок - Установка для Ubuntu 20+   ${NC}"
 echo -e "${GREEN}========================================${NC}"
+echo -e "${CYAN}Директория проекта: ${PROJECT_DIR}${NC}"
+echo -e "${CYAN}Лог установки: ${INSTALL_LOG}${NC}"
 echo ""
 
-# Определение директории проекта
-# Если скрипт запущен не из /docdev, проверяем и переходим туда
-if [ "$(pwd)" != "/docdev" ]; then
-    if [ -d "/docdev" ]; then
-        echo -e "${YELLOW}Переход в директорию /docdev...${NC}"
-        cd /docdev
-    else
-        echo -e "${YELLOW}Создание директории /docdev...${NC}"
-        mkdir -p /docdev
-        cd /docdev
-    fi
-fi
-
-PROJECT_DIR="/docdev"
-echo -e "${YELLOW}Директория проекта: ${PROJECT_DIR}${NC}"
-
-# Проверка что мы в правильной директории
-if [ "$(pwd)" != "/docdev" ]; then
-    echo -e "${RED}Ошибка: Не удалось перейти в директорию /docdev${NC}"
-    exit 1
-fi
-echo ""
-
-# Функция для проверки установленного пакета
+# Функция для проверки установленного пакета (идемпотентная)
 check_package() {
-    if command -v $1 &> /dev/null; then
-        echo -e "${GREEN}✓ $1 установлен${NC}"
+    if command -v "$1" &> /dev/null; then
+        log_success "$1 установлен"
         return 0
     else
-        echo -e "${RED}✗ $1 не установлен${NC}"
+        log_warning "$1 не установлен"
         return 1
     fi
 }
 
-# Обновление системы
-echo -e "${YELLOW}[1/17] Обновление системы...${NC}"
-apt-get update -qq
-apt-get upgrade -y -qq
-echo -e "${GREEN}✓ Система обновлена${NC}"
-echo ""
+# Обновление системы с защитой от интерактивных промптов
+update_system() {
+    log_info "[1/17] Обновление системы..."
+    
+    # Настройка для неинтерактивного режима
+    export DEBIAN_FRONTEND=noninteractive
+    
+    # Обновление с подавлением предупреждений о release info
+    apt-get update -qq -o Acquire::AllowReleaseInfoChange::Suite=true || {
+        log_warning "Повторная попытка обновления репозиториев..."
+        apt-get update -qq || true
+    }
+    
+    # Обновление пакетов без интерактивных промптов
+    apt-get upgrade -y -qq -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" || {
+        log_warning "Обновление завершилось с предупреждениями (не критично)"
+    }
+    
+    log_success "Система обновлена"
+    echo ""
+}
 
-# Установка Node.js 20.x
-echo -e "${YELLOW}[2/17] Установка Node.js...${NC}"
-if check_package node; then
-    NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-    if [ "$NODE_VERSION" -lt 20 ]; then
-        echo -e "${YELLOW}Обнаружена старая версия Node.js. Установка Node.js 20.x...${NC}"
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-        apt-get install -y nodejs
+# ========== НАЧАЛО УСТАНОВКИ ==========
+
+# Вызов update_system()
+update_system
+
+# Установка Node.js 20.x (идемпотентная)
+install_nodejs() {
+    log_info "[2/17] Установка Node.js 20.x..."
+    
+    if check_package node; then
+        local node_major=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+        if [ "$node_major" -ge 20 ]; then
+            log_success "Node.js уже установлен: $(node -v)"
+            NODE_VERSION=$(node -v)
+            NPM_VERSION=$(npm -v 2>/dev/null || echo "не установлен")
+            return 0
+        fi
+        log_warning "Обнаружена старая версия Node.js. Обновление до 20.x..."
     fi
-else
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y nodejs
-fi
+    
+    # Установка Node.js 20.x
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - || {
+        log_error "Не удалось добавить репозиторий Node.js"
+        return 1
+    }
+    
+    apt-get install -y nodejs || {
+        log_error "Не удалось установить Node.js"
+        return 1
+    }
+    
+    NODE_VERSION=$(node -v)
+    NPM_VERSION=$(npm -v)
+    log_success "Node.js установлен: ${NODE_VERSION}"
+    log_success "npm установлен: ${NPM_VERSION}"
+    echo ""
+}
 
-# Проверка версии Node.js
-NODE_VERSION=$(node -v)
-echo -e "${GREEN}✓ Node.js установлен: ${NODE_VERSION}${NC}"
-
-# Проверка npm
-if ! check_package npm; then
-    apt-get install -y npm
-fi
-NPM_VERSION=$(npm -v)
-echo -e "${GREEN}✓ npm установлен: ${NPM_VERSION}${NC}"
-echo ""
+install_nodejs
 
 # Установка PostgreSQL
 echo -e "${YELLOW}[3/17] Установка PostgreSQL...${NC}"
@@ -458,9 +518,18 @@ else
     echo ""
 fi
 
-# Создание .env файла
-echo -e "${YELLOW}Создание .env файла...${NC}"
-cat > /docdev/.env <<EOF
+# Создание .env файла с безопасными правами
+log_info "Создание .env файла..."
+
+# Убеждаемся что PROJECT_DIR существует
+mkdir -p "${PROJECT_DIR}"
+
+# Создаем .env с ограниченными правами доступа
+touch "${PROJECT_DIR}/.env"
+chmod 600 "${PROJECT_DIR}/.env"  # Только root может читать/писать
+chown root:root "${PROJECT_DIR}/.env"
+
+cat > "${PROJECT_DIR}/.env" <<EOF
 # Database Configuration
 DATABASE_URL=${DATABASE_URL}
 
@@ -1598,7 +1667,114 @@ sudo lsof -i :6379
 ========================================
 INSTALLINFOEOF
 
-chmod 644 /docdev/INSTALL_INFO.txt
+chmod 644 "${PROJECT_DIR}/INSTALL_INFO.txt"
+
+# ========== SMOKE TESTS ==========
+echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║  🧪 ПРОВЕРКА РАБОТОСПОСОБНОСТИ (SMOKE TESTS)              ║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+SMOKE_TEST_FAILED=false
+
+# Тест 1: Проверка systemd сервиса
+log_info "Тест 1: Проверка systemd сервиса doc-management..."
+sleep 3  # Даем время на старт
+if systemctl is-active --quiet doc-management.service; then
+    log_success "✓ Сервис doc-management запущен"
+else
+    log_error "✗ Сервис doc-management не запущен"
+    SMOKE_TEST_FAILED=true
+    journalctl -u doc-management -n 20 --no-pager || true
+fi
+echo ""
+
+# Тест 2: Проверка API endpoint
+log_info "Тест 2: Проверка API /api/auth/me..."
+sleep 2
+API_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${APP_PORT}/api/auth/me 2>/dev/null || echo "000")
+if [ "$API_RESPONSE" = "401" ] || [ "$API_RESPONSE" = "200" ]; then
+    log_success "✓ API отвечает корректно (HTTP $API_RESPONSE)"
+else
+    log_error "✗ API не отвечает (HTTP $API_RESPONSE)"
+    SMOKE_TEST_FAILED=true
+fi
+echo ""
+
+# Тест 3: Проверка Nginx
+log_info "Тест 3: Проверка Nginx reverse proxy..."
+NGINX_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/ 2>/dev/null || echo "000")
+if [ "$NGINX_RESPONSE" = "200" ] || [ "$NGINX_RESPONSE" = "401" ]; then
+    log_success "✓ Nginx работает корректно (HTTP $NGINX_RESPONSE)"
+else
+    log_warning "⚠ Nginx вернул код: $NGINX_RESPONSE (возможно нормально для /)"
+fi
+echo ""
+
+# Тест 4: Проверка Redis
+log_info "Тест 4: Проверка Redis..."
+if redis-cli ping > /dev/null 2>&1; then
+    log_success "✓ Redis доступен"
+else
+    log_error "✗ Redis недоступен"
+    SMOKE_TEST_FAILED=true
+fi
+echo ""
+
+# Тест 5: Проверка PostgreSQL
+log_info "Тест 5: Проверка PostgreSQL..."
+if PGPASSWORD="${DB_PASSWORD}" psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c "SELECT 1" > /dev/null 2>&1; then
+    log_success "✓ PostgreSQL доступна"
+else
+    log_error "✗ PostgreSQL недоступна"
+    SMOKE_TEST_FAILED=true
+fi
+echo ""
+
+# Тест 6: Проверка таблиц в базе данных
+log_info "Тест 6: Проверка таблиц в базе данных..."
+TABLE_COUNT=$(PGPASSWORD="${DB_PASSWORD}" psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';" 2>/dev/null | tr -d ' ' || echo "0")
+if [ "$TABLE_COUNT" -gt 0 ]; then
+    log_success "✓ Создано таблиц: $TABLE_COUNT"
+else
+    log_error "✗ Таблицы не найдены"
+    SMOKE_TEST_FAILED=true
+fi
+echo ""
+
+# Тест 7: Проверка .env файла и прав доступа
+log_info "Тест 7: Проверка .env файла..."
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    ENV_PERMS=$(stat -c "%a" "${PROJECT_DIR}/.env")
+    if [ "$ENV_PERMS" = "600" ]; then
+        log_success "✓ .env файл создан с безопасными правами ($ENV_PERMS)"
+    else
+        log_warning "⚠ .env файл имеет права: $ENV_PERMS (рекомендуется 600)"
+    fi
+else
+    log_error "✗ .env файл не найден"
+    SMOKE_TEST_FAILED=true
+fi
+echo ""
+
+# Итоговый результат smoke tests
+if [ "$SMOKE_TEST_FAILED" = "true" ]; then
+    log_error "═══════════════════════════════════════════════════"
+    log_error " ⚠️  КРИТИЧЕСКАЯ ОШИБКА: Smoke tests не прошли!"
+    log_error " Проверьте логи: journalctl -u doc-management -n 50"
+    log_error " Лог установки: $INSTALL_LOG"
+    log_error "═══════════════════════════════════════════════════"
+    echo ""
+    log_error "Установка НЕ может считаться успешной."
+    log_info "Исправьте ошибки и повторите установку или запустите вручную:"
+    log_info "  sudo systemctl restart doc-management"
+    exit 1  # КРИТИЧНО: прерываем установку при провале smoke tests
+else
+    log_success "═══════════════════════════════════════════════════"
+    log_success " ✅ Все smoke tests пройдены успешно!"
+    log_success "═══════════════════════════════════════════════════"
+    echo ""
+fi
 
 # Финальный вывод
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
