@@ -1,9 +1,6 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -12,4 +9,19 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle({ client: pool, schema });
+export const db = drizzle(pool, { schema });
+
+export async function testDatabaseConnection(): Promise<boolean> {
+  try {
+    const result = await pool.query('SELECT 1');
+    console.log('[database] Подключение к базе данных успешно');
+    return true;
+  } catch (error) {
+    console.error('[database] Ошибка подключения к базе данных:', error);
+    throw new Error(`Не удалось подключиться к базе данных: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`);
+  }
+}
+
+pool.on('error', (err) => {
+  console.error('[database] Неожиданная ошибка подключения к БД:', err);
+});

@@ -7,7 +7,7 @@
 I want the agent to use simple language and provide detailed explanations when necessary. I prefer an iterative development approach, where changes are proposed and discussed before implementation. Please ask for confirmation before making any major architectural or code structure changes. Do not make changes to the `shared/schema.ts` file without explicit instruction and understanding of the database implications.
 
 ## System Architecture
-The application is a full-stack project utilizing a React 18 frontend with Vite, TypeScript, and Tailwind CSS. The backend is built with Express.js and TypeScript. Data persistence is handled by PostgreSQL with Drizzle ORM. Authentication uses Passport.js with a local strategy and express-session. UI components leverage Radix UI and shadcn/ui. File uploads are managed via Multer.
+The application is a full-stack project utilizing a React 18 frontend with Vite, TypeScript, and Tailwind CSS. The backend is built with Express.js and TypeScript. Data persistence is handled by PostgreSQL with Drizzle ORM using the node-postgres (pg) driver for universal compatibility across Replit and Ubuntu environments. Authentication uses Passport.js with a local strategy and express-session. UI components leverage Radix UI and shadcn/ui. File uploads are managed via Multer.
 
 ### Key Features:
 -   **Document Management**: Upload, categorize, and manage documents with version control.
@@ -36,10 +36,55 @@ The application is a full-stack project utilizing a React 18 frontend with Vite,
 -   **Styling**: Tailwind CSS, Radix UI, shadcn/ui
 -   **Backend Framework**: Express.js
 -   **Database**: PostgreSQL
--   **ORM**: Drizzle ORM
+-   **Database Driver**: pg (node-postgres) - Universal PostgreSQL driver
+-   **ORM**: Drizzle ORM with node-postgres adapter
 -   **Authentication**: Passport.js, express-session
 -   **File Uploads**: Multer
 -   **Session Management**: connect-pg-simple
 -   **PDF Viewer**: react-pdf (using pdfjs-dist)
 -   **Word Document Preview**: docx-preview
 -   **QR Code Handling**: Integrated scanner functionality
+
+## Recent Changes (November 15, 2025)
+
+### Replit Environment Setup
+-   **Database**: Configured PostgreSQL database with Replit's built-in PostgreSQL service
+-   **Database Schema**: Applied database migrations successfully using Drizzle ORM
+-   **Seed Data**: Populated database with initial test data including admin user (username: `admin`, password: `admin123`)
+-   **Workflow**: Configured development workflow to run on port 5000 with `npm run dev`
+-   **Deployment**: Configured autoscale deployment with build step (`npm run build`) and production start (`npm start`)
+-   **File Structure**: Created uploads directory for user-uploaded files with proper permissions
+-   **Git Configuration**: Added comprehensive .gitignore file for Node.js, TypeScript, and build artifacts
+
+### Ubuntu 20+ Installation Script Improvements
+-   **pg_hba.conf Configuration**: Автоматическая настройка PostgreSQL для разрешения подключений с паролем через localhost (md5 authentication)
+-   **Enhanced Error Handling**: Добавлена логика retry с 3 попытками для тестирования подключения к БД
+-   **Improved Diagnostics**: Расширенная диагностика ошибок с выводом содержимого pg_hba.conf и полезными командами для отладки
+-   **Safe Backup**: Автоматическое создание резервных копий pg_hba.conf перед модификацией
+-   **Idempotent Operations**: Скрипт безопасно запускается повторно без дублирования настроек
+
+### Database Connection Improvements
+-   **Startup Validation**: Приложение проверяет подключение к БД при запуске и завершается с ясной ошибкой если БД недоступна
+-   **Error Logging**: Добавлен обработчик ошибок pool для логирования неожиданных проблем с подключением
+-   **Graceful Shutdown**: Приложение корректно завершает работу если не может подключиться к базе данных
+-   **Connection Test**: Функция testDatabaseConnection() для проверки подключения перед запуском сервера
+
+### Environment Configuration
+The application is now configured with:
+-   DATABASE_URL: PostgreSQL connection (configured automatically by Replit)
+-   SESSION_SECRET: Secure session key (configured automatically by Replit)
+-   NODE_ENV: Set to development for dev mode, production for deployment
+-   PORT: 5000 (frontend and backend both served by Express)
+
+### Login Credentials
+-   **Admin User**: username: `admin`, password: `admin123`
+-   Change the admin password after first login for security
+
+### Development Notes
+-   The Vite dev server is properly configured for Replit with `host: "0.0.0.0"`, `port: 5000`, and `allowedHosts: true`
+-   Express serves both the API routes and the Vite frontend in development mode
+-   PostCSS warning about missing `from` option is non-critical and doesn't affect functionality
+-   All dependencies installed successfully (537 packages including pg)
+-   Database connection is validated on startup with clear error messages
+-   Application uses node-postgres (pg) driver for universal compatibility with both Replit and Ubuntu PostgreSQL instances
+-   The pg driver works seamlessly with Replit's PostgreSQL service and standard Ubuntu PostgreSQL installations

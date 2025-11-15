@@ -502,6 +502,63 @@ echo -e "${GREEN}✓ Расширения PostgreSQL созданы${NC}"
 echo -e "${GREEN}✓ База данных и пользователь созданы${NC}"
 echo ""
 
+# КРИТИЧЕСКИ ВАЖНО: Настройка pg_hba.conf для разрешения подключений с паролем
+echo -e "${YELLOW}Настройка аутентификации PostgreSQL (pg_hba.conf)...${NC}"
+
+# Определяем версию PostgreSQL и путь к конфигу
+PG_VERSION_NUM=$(sudo -u postgres psql -t -c "SHOW server_version;" | cut -d. -f1 | tr -d ' ')
+PG_HBA_CONF="/etc/postgresql/${PG_VERSION_NUM}/main/pg_hba.conf"
+
+if [ ! -f "$PG_HBA_CONF" ]; then
+    # Попытка найти файл pg_hba.conf автоматически
+    PG_HBA_CONF=$(sudo -u postgres psql -t -c "SHOW hba_file;" | tr -d ' ')
+    
+    if [ ! -f "$PG_HBA_CONF" ]; then
+        echo -e "${RED}✗ Не удалось найти файл pg_hba.conf${NC}"
+        echo -e "${YELLOW}Поиск вручную...${NC}"
+        PG_HBA_CONF=$(find /etc/postgresql -name pg_hba.conf 2>/dev/null | head -1)
+        
+        if [ -z "$PG_HBA_CONF" ] || [ ! -f "$PG_HBA_CONF" ]; then
+            echo -e "${RED}✗ pg_hba.conf не найден${NC}"
+            exit 1
+        fi
+    fi
+fi
+
+echo -e "${CYAN}Найден pg_hba.conf: ${PG_HBA_CONF}${NC}"
+
+# Создаем резервную копию
+if [ ! -f "${PG_HBA_CONF}.backup.$(date +%Y%m%d)" ]; then
+    cp "$PG_HBA_CONF" "${PG_HBA_CONF}.backup.$(date +%Y%m%d)"
+    echo -e "${GREEN}✓ Создана резервная копия: ${PG_HBA_CONF}.backup.$(date +%Y%m%d)${NC}"
+fi
+
+# Проверяем, есть ли уже правило для нашего пользователя
+if ! grep -q "host.*${DB_NAME}.*${DB_USER}.*md5" "$PG_HBA_CONF"; then
+    echo -e "${YELLOW}Добавление правила аутентификации для ${DB_USER}...${NC}"
+    
+    # Добавляем правило перед строкой "local all all"
+    # Это позволяет подключаться с паролем через localhost
+    sed -i "/^# IPv4 local connections:/a\host    ${DB_NAME}    ${DB_USER}    127.0.0.1/32    md5" "$PG_HBA_CONF"
+    sed -i "/^# IPv4 local connections:/a\host    ${DB_NAME}    ${DB_USER}    ::1/128         md5" "$PG_HBA_CONF"
+    
+    # Также добавляем общее правило для localhost если его нет
+    if ! grep -q "host.*all.*all.*127.0.0.1.*md5" "$PG_HBA_CONF"; then
+        sed -i "/^# IPv4 local connections:/a\host    all             all             127.0.0.1/32            md5" "$PG_HBA_CONF"
+        sed -i "/^# IPv6 local connections:/a\host    all             all             ::1/128                 md5" "$PG_HBA_CONF"
+    fi
+    
+    echo -e "${GREEN}✓ Правила аутентификации добавлены${NC}"
+    
+    # Перезагружаем конфигурацию PostgreSQL
+    echo -e "${YELLOW}Перезагрузка конфигурации PostgreSQL...${NC}"
+    sudo systemctl reload postgresql
+    sleep 2
+    echo -e "${GREEN}✓ Конфигурация перезагружена${NC}"
+else
+    echo -e "${GREEN}✓ Правила аутентификации уже настроены${NC}"
+fi
+
 # Формирование DATABASE_URL
 DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 DATABASE_URL_SAFE="postgresql://${DB_USER}:****@${DB_HOST}:${DB_PORT}/${DB_NAME}"
@@ -511,20 +568,49 @@ echo ""
 
 # Тестирование подключения к базе данных
 echo -e "${YELLOW}Тестирование подключения к базе данных...${NC}"
-PGPASSWORD="${DB_PASSWORD}" psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c "SELECT current_database(), current_user, version();" > /tmp/pg-test.log 2>&1
-if [ $? -eq 0 ]; then
+
+# Даем PostgreSQL время на применение настроек
+sleep 1
+
+# Пробуем подключиться несколько раз с небольшими паузами
+MAX_RETRIES=3
+RETRY_COUNT=0
+CONNECTION_SUCCESS=false
+
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    PGPASSWORD="${DB_PASSWORD}" psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c "SELECT current_database(), current_user, version();" > /tmp/pg-test.log 2>&1
+    
+    if [ $? -eq 0 ]; then
+        CONNECTION_SUCCESS=true
+        break
+    fi
+    
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+        echo -e "${YELLOW}Попытка ${RETRY_COUNT} не удалась, повтор через 2 секунды...${NC}"
+        sleep 2
+    fi
+done
+
+if [ "$CONNECTION_SUCCESS" = true ]; then
     echo -e "${GREEN}✓ Подключение к базе данных успешно${NC}"
     cat /tmp/pg-test.log | grep -A 1 "current_database" || true
 else
-    echo -e "${RED}✗ Ошибка подключения к базе данных${NC}"
+    echo -e "${RED}✗ Ошибка подключения к базе данных после ${MAX_RETRIES} попыток${NC}"
     echo -e "${YELLOW}Детали ошибки:${NC}"
     cat /tmp/pg-test.log
+    echo ""
+    echo -e "${YELLOW}Содержимое pg_hba.conf:${NC}"
+    grep -v "^#" "$PG_HBA_CONF" | grep -v "^$" || true
     echo ""
     echo -e "${YELLOW}Проверьте следующее:${NC}"
     echo "  1. PostgreSQL запущен: sudo systemctl status postgresql"
     echo "  2. Правильный порт: ${DB_PORT}"
-    echo "  3. Настройки pg_hba.conf разрешают подключение"
-    echo "  4. Пароль базы данных указан верно"
+    echo "  3. Пароль базы данных указан верно"
+    echo "  4. Просмотрите лог: ${INSTALL_LOG}"
+    echo ""
+    echo -e "${CYAN}Для отладки выполните:${NC}"
+    echo "  PGPASSWORD='${DB_PASSWORD}' psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME}"
     echo ""
     echo -e "${RED}Установка прервана${NC}"
     exit 1
@@ -681,124 +767,28 @@ echo -e "${CYAN}Проверка установленных версий:${NC}"
 npm list connect-redis redis 2>/dev/null | grep -E "connect-redis|redis" || echo "Пакеты установлены"
 echo ""
 
-# КРИТИЧЕСКИ ВАЖНО: Проверка и исправление server/db.ts
+# КРИТИЧЕСКИ ВАЖНО: Проверка и настройка зависимостей для работы с PostgreSQL
 echo -e "${YELLOW}[10/18] Проверка конфигурации базы данных...${NC}"
 
+echo -e "${YELLOW}Проверка server/db.ts...${NC}"
 if [ -f "/docdev/server/db.ts" ]; then
-    echo -e "${YELLOW}Проверка файла server/db.ts...${NC}"
-    
-    # Проверка на наличие @libsql/client (неправильный драйвер)
-    if grep -q "@libsql/client" /docdev/server/db.ts; then
-        echo -e "${RED}✗ Обнаружен неправильный драйвер @libsql/client${NC}"
-        echo -e "${YELLOW}Создание резервной копии...${NC}"
-        cp /docdev/server/db.ts /docdev/server/db.ts.backup
-        
-        echo -e "${YELLOW}Создание правильного файла db.ts для PostgreSQL...${NC}"
-        cat > /docdev/server/db.ts <<'DBEOF'
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "@shared/schema";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
-}
-
-// Создание подключения к PostgreSQL
-const queryClient = postgres(process.env.DATABASE_URL, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
-
-// Создание экземпляра Drizzle ORM
-export const db = drizzle(queryClient, { schema });
-
-// Экспорт клиента для прямых запросов
-export { queryClient };
-DBEOF
-        echo -e "${GREEN}✓ Файл db.ts исправлен для PostgreSQL${NC}"
-        echo -e "${YELLOW}Резервная копия: /docdev/server/db.ts.backup${NC}"
-    elif grep -q "postgres-js" /docdev/server/db.ts || grep -q "drizzle-orm/postgres-js" /docdev/server/db.ts; then
-        echo -e "${GREEN}✓ Правильный драйвер PostgreSQL уже используется${NC}"
-    else
-        echo -e "${YELLOW}⚠ Неизвестная конфигурация db.ts${NC}"
-        echo -e "${YELLOW}Содержимое файла:${NC}"
-        head -20 /docdev/server/db.ts
-        echo ""
-        
-        # В неинтерактивном режиме НЕ заменяем конфигурацию (safe default)
-        if [ "$NONINTERACTIVE" = "true" ]; then
-            REPLACE_DB="n"
-            echo -e "${YELLOW}⚠ Сохранена существующая конфигурация db.ts (noninteractive mode)${NC}"
-        else
-            read -p "Заменить на стандартную конфигурацию PostgreSQL? (y/n): " REPLACE_DB
-        fi
-        
-        if [ "$REPLACE_DB" = "y" ] || [ "$REPLACE_DB" = "Y" ]; then
-            cp /docdev/server/db.ts /docdev/server/db.ts.backup
-            cat > /docdev/server/db.ts <<'DBEOF'
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "@shared/schema";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
-}
-
-// Создание подключения к PostgreSQL
-const queryClient = postgres(process.env.DATABASE_URL, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
-
-// Создание экземпляра Drizzle ORM
-export const db = drizzle(queryClient, { schema });
-
-// Экспорт клиента для прямых запросов
-export { queryClient };
-DBEOF
-            echo -e "${GREEN}✓ Файл db.ts заменен${NC}"
-        fi
-    fi
+    echo -e "${GREEN}✓ Файл server/db.ts найден${NC}"
+    echo -e "${CYAN}ℹ Проект использует условную загрузку драйверов (Neon для Replit, pg для Ubuntu)${NC}"
 else
     echo -e "${RED}✗ Файл server/db.ts не найден${NC}"
-    echo -e "${YELLOW}Создание стандартного файла db.ts...${NC}"
-    
-    mkdir -p /docdev/server
-    cat > /docdev/server/db.ts <<'DBEOF'
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "@shared/schema";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
-}
-
-// Создание подключения к PostgreSQL
-const queryClient = postgres(process.env.DATABASE_URL, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
-
-// Создание экземпляра Drizzle ORM
-export const db = drizzle(queryClient, { schema });
-
-// Экспорт клиента для прямых запросов
-export { queryClient };
-DBEOF
-    echo -e "${GREEN}✓ Файл db.ts создан${NC}"
+    echo -e "${RED}Ошибка: Критически важный файл отсутствует${NC}"
+    exit 1
 fi
 
-# Проверка наличия правильных зависимостей
-echo -e "${YELLOW}Проверка зависимостей PostgreSQL...${NC}"
-if ! grep -q '"postgres"' /docdev/package.json; then
-    echo -e "${YELLOW}Установка пакета postgres...${NC}"
-    npm install postgres
-    echo -e "${GREEN}✓ Пакет postgres установлен${NC}"
+# Проверка наличия правильных зависимостей для Ubuntu (node-postgres)
+echo -e "${YELLOW}Проверка зависимостей PostgreSQL для Ubuntu...${NC}"
+
+if ! grep -q '"pg"' /docdev/package.json; then
+    echo -e "${YELLOW}Установка пакета pg (node-postgres драйвер)...${NC}"
+    npm install pg @types/pg
+    echo -e "${GREEN}✓ Пакет pg установлен${NC}"
 else
-    echo -e "${GREEN}✓ Пакет postgres найден${NC}"
+    echo -e "${GREEN}✓ Пакет pg найден${NC}"
 fi
 
 if ! grep -q '"drizzle-orm"' /docdev/package.json; then
