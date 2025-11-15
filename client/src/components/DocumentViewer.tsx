@@ -7,10 +7,9 @@ import * as XLSX from 'xlsx';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString();
+// Используем worker из CDN react-pdf для совместимости версий
+// react-pdf использует pdfjs-dist@5.4.296, поэтому импортируем worker той же версии
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface DocumentViewerProps {
   document: {
@@ -48,24 +47,30 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
   const loadDocument = async () => {
     if (!document) return;
 
-    const mimeType = document.mimeType;
-    const isLegacyDoc = mimeType === 'application/msword' || document.fileName.endsWith('.doc');
-    const isModernDocx = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
-      || document.fileName.endsWith('.docx');
-    
-    const isLegacyXls = mimeType === 'application/vnd.ms-excel' || document.fileName.endsWith('.xls');
-    const isModernXlsx = mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      || document.fileName.endsWith('.xlsx');
+    try {
+      const mimeType = document.mimeType;
+      const isLegacyDoc = mimeType === 'application/msword' || document.fileName.endsWith('.doc');
+      const isModernDocx = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+        || document.fileName.endsWith('.docx');
+      
+      const isLegacyXls = mimeType === 'application/vnd.ms-excel' || document.fileName.endsWith('.xls');
+      const isModernXlsx = mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        || document.fileName.endsWith('.xlsx');
 
-    if (isLegacyDoc) {
-      setError('legacy_doc');
-      return;
-    }
+      if (isLegacyDoc) {
+        setError('legacy_doc');
+        return;
+      }
 
-    if (isModernDocx) {
-      await loadWordDocument();
-    } else if (isLegacyXls || isModernXlsx) {
-      await loadExcelDocument();
+      if (isModernDocx) {
+        await loadWordDocument();
+      } else if (isLegacyXls || isModernXlsx) {
+        await loadExcelDocument();
+      }
+    } catch (err) {
+      console.error('Ошибка при загрузке документа:', err);
+      setError('Не удалось загрузить документ. Попробуйте обновить страницу или скачать файл.');
+      setLoading(false);
     }
   };
 
