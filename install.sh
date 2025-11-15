@@ -19,6 +19,16 @@ readonly NC='\033[0m' # No Color
 SKIP_CLEANUP=false
 INSTALL_LOG="/var/log/docdev-install.log"
 
+# Определение неинтерактивного режима
+# Автоматически использовать существующие настройки при повторных запусках
+if [ ! -t 0 ] || [ -n "${NONINTERACTIVE:-}" ] || [ "${DEBIAN_FRONTEND:-}" = "noninteractive" ]; then
+    NONINTERACTIVE=true
+    log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }  # Временная функция для раннего логирования
+    log_info "Запуск в неинтерактивном режиме (автоматическое использование существующих настроек)"
+else
+    NONINTERACTIVE=false
+fi
+
 # Создаем директорию для логов если не существует
 mkdir -p "$(dirname "$INSTALL_LOG")"
 touch "$INSTALL_LOG" 2>/dev/null || INSTALL_LOG="/tmp/docdev-install.log"
@@ -90,6 +100,7 @@ trap cleanup EXIT
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN} УправДок - Установка для Ubuntu 20+   ${NC}"
+echo -e "${GREEN}  включая PWA мобильное приложение     ${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo -e "${CYAN}Директория проекта: ${PROJECT_DIR}${NC}"
 echo -e "${CYAN}Лог установки: ${INSTALL_LOG}${NC}"
@@ -108,7 +119,7 @@ check_package() {
 
 # Обновление системы с защитой от интерактивных промптов
 update_system() {
-    log_info "[1/17] Обновление системы..."
+    log_info "[1/18] Обновление системы..."
     
     # Настройка для неинтерактивного режима
     export DEBIAN_FRONTEND=noninteractive
@@ -135,7 +146,7 @@ update_system
 
 # Установка Node.js 20.x (идемпотентная)
 install_nodejs() {
-    log_info "[2/17] Установка Node.js 20.x..."
+    log_info "[2/18] Установка Node.js 20.x..."
     
     if check_package node; then
         local node_major=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
@@ -169,7 +180,7 @@ install_nodejs() {
 install_nodejs
 
 # Установка PostgreSQL
-echo -e "${YELLOW}[3/17] Установка PostgreSQL...${NC}"
+echo -e "${YELLOW}[3/18] Установка PostgreSQL...${NC}"
 if ! check_package psql; then
     apt-get install -y postgresql postgresql-contrib postgresql-client
     systemctl start postgresql
@@ -187,7 +198,7 @@ echo -e "${GREEN}✓ PostgreSQL версия: ${PG_VERSION}${NC}"
 echo ""
 
 # Установка Redis для сессий
-echo -e "${YELLOW}[4/17] Установка Redis...${NC}"
+echo -e "${YELLOW}[4/18] Установка Redis...${NC}"
 if ! check_package redis-cli; then
     apt-get install -y redis-server
     systemctl start redis-server
@@ -219,7 +230,7 @@ echo -e "${GREEN}✓ Redis версия: ${REDIS_VERSION}${NC}"
 echo ""
 
 # Установка Nginx
-echo -e "${YELLOW}[5/17] Установка Nginx...${NC}"
+echo -e "${YELLOW}[5/18] Установка Nginx...${NC}"
 if ! check_package nginx; then
     apt-get install -y nginx
     systemctl start nginx
@@ -236,7 +247,7 @@ echo -e "${GREEN}✓ Nginx версия: ${NGINX_VERSION}${NC}"
 echo ""
 
 # Установка дополнительных зависимостей
-echo -e "${YELLOW}[6/17] Установка дополнительных зависимостей...${NC}"
+echo -e "${YELLOW}[6/18] Установка дополнительных зависимостей...${NC}"
 apt-get install -y build-essential python3 git curl lsof openssl postgresql-client netcat
 echo -e "${GREEN}✓ Дополнительные зависимости установлены${NC}"
 echo ""
@@ -248,8 +259,15 @@ if [ -f "/docdev/.env" ]; then
     echo -e "${GREEN}✓ Найден существующий .env файл${NC}"
     echo -e "${YELLOW}═══════════════════════════════════════${NC}"
     echo ""
-    read -p "Использовать существующую конфигурацию из .env? (Y/n): " USE_ENV
-    USE_ENV=${USE_ENV:-Y}
+    
+    # В неинтерактивном режиме автоматически используем существующий .env
+    if [ "$NONINTERACTIVE" = "true" ]; then
+        USE_ENV="Y"
+        echo -e "${GREEN}✓ Автоматическое использование существующей конфигурации (noninteractive mode)${NC}"
+    else
+        read -p "Использовать существующую конфигурацию из .env? (Y/n): " USE_ENV
+        USE_ENV=${USE_ENV:-Y}
+    fi
     
     if [ "$USE_ENV" = "Y" ] || [ "$USE_ENV" = "y" ]; then
         USE_EXISTING_ENV=true
@@ -287,8 +305,15 @@ if [ -f "/docdev/.env" ]; then
         echo "  Порт приложения: ${APP_PORT}"
         echo "  Домен: ${DOMAIN}"
         echo ""
-        read -p "Продолжить с этой конфигурацией? (Y/n): " CONFIRM
-        CONFIRM=${CONFIRM:-Y}
+        
+        # В неинтерактивном режиме автоматически продолжаем
+        if [ "$NONINTERACTIVE" = "true" ]; then
+            CONFIRM="Y"
+            echo -e "${GREEN}✓ Автоматическое продолжение с загруженной конфигурацией${NC}"
+        else
+            read -p "Продолжить с этой конфигурацией? (Y/n): " CONFIRM
+            CONFIRM=${CONFIRM:-Y}
+        fi
         
         if [ "$CONFIRM" != "Y" ] && [ "$CONFIRM" != "y" ]; then
             USE_EXISTING_ENV=false
@@ -300,34 +325,45 @@ fi
 
 # Ввод данных для базы данных (если не используем существующий .env)
 if [ "$USE_EXISTING_ENV" = false ]; then
-    echo -e "${YELLOW}[7/17] Настройка базы данных${NC}"
+    echo -e "${YELLOW}[7/18] Настройка базы данных${NC}"
     echo -e "${CYAN}═══════════════════════════════════════${NC}"
     echo -e "${CYAN}  Конфигурация PostgreSQL${NC}"
     echo -e "${CYAN}═══════════════════════════════════════${NC}"
     echo ""
 
-    read -p "Хост PostgreSQL [localhost]: " DB_HOST
-    DB_HOST=${DB_HOST:-localhost}
+    # В неинтерактивном режиме используем env vars или defaults
+    if [ "$NONINTERACTIVE" = "true" ]; then
+        DB_HOST=${DB_HOST:-${PGHOST:-localhost}}
+        DB_PORT=${DB_PORT:-${PGPORT:-5432}}
+        DB_NAME=${DB_NAME:-${PGDATABASE:-doc_management}}
+        DB_USER=${DB_USER:-${PGUSER:-doc_user}}
+        DB_PASSWORD=${DB_PASSWORD:-${PGPASSWORD:-$(openssl rand -base64 32)}}
+        echo -e "${GREEN}✓ Использованы переменные окружения или defaults (noninteractive mode)${NC}"
+        echo "  DB_HOST=${DB_HOST}, DB_PORT=${DB_PORT}, DB_NAME=${DB_NAME}, DB_USER=${DB_USER}"
+    else
+        read -p "Хост PostgreSQL [localhost]: " DB_HOST
+        DB_HOST=${DB_HOST:-localhost}
 
-    read -p "Порт PostgreSQL [5432]: " DB_PORT
-    DB_PORT=${DB_PORT:-5432}
+        read -p "Порт PostgreSQL [5432]: " DB_PORT
+        DB_PORT=${DB_PORT:-5432}
 
-    read -p "Имя базы данных [doc_management]: " DB_NAME
-    DB_NAME=${DB_NAME:-doc_management}
+        read -p "Имя базы данных [doc_management]: " DB_NAME
+        DB_NAME=${DB_NAME:-doc_management}
 
-    read -p "Пользователь PostgreSQL [doc_user]: " DB_USER
-    DB_USER=${DB_USER:-doc_user}
+        read -p "Пользователь PostgreSQL [doc_user]: " DB_USER
+        DB_USER=${DB_USER:-doc_user}
 
-    echo -e "${YELLOW}Введите пароль для пользователя ${DB_USER}:${NC}"
-    read -s DB_PASSWORD
-    echo ""
+        echo -e "${YELLOW}Введите пароль для пользователя ${DB_USER}:${NC}"
+        read -s DB_PASSWORD
+        echo ""
 
-    if [ -z "$DB_PASSWORD" ]; then
-        echo -e "${RED}Ошибка: Пароль не может быть пустым${NC}"
-        exit 1
+        if [ -z "$DB_PASSWORD" ]; then
+            echo -e "${RED}Ошибка: Пароль не может быть пустым${NC}"
+            exit 1
+        fi
     fi
 else
-    echo -e "${YELLOW}[7/17] Настройка базы данных${NC}"
+    echo -e "${YELLOW}[7/18] Настройка базы данных${NC}"
     echo -e "${GREEN}✓ Используется существующая конфигурация${NC}"
     echo ""
 fi
@@ -360,15 +396,22 @@ fi
 echo ""
 echo -e "${YELLOW}Создание базы данных и пользователя...${NC}"
 
-# Проверка существования базы данных
-DB_EXISTS=$(sudo -u postgres psql -c "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -c 1 || echo "0")
+# Проверка существования базы данных (более надежная проверка)
+DB_EXISTS=$(sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -w "${DB_NAME}" | wc -l)
 
-if [ "$DB_EXISTS" = "1" ]; then
+if [ "$DB_EXISTS" -ge "1" ]; then
     echo -e "${YELLOW}⚠ База данных '${DB_NAME}' уже существует${NC}"
     echo -e "${CYAN}═══════════════════════════════════════${NC}"
     echo -e "${RED}ВНИМАНИЕ: Сброс базы данных удалит ВСЕ данные!${NC}"
     echo -e "${CYAN}═══════════════════════════════════════${NC}"
-    read -p "Хотите удалить и пересоздать базу данных? (yes/NO): " RESET_DB
+    
+    # В неинтерактивном режиме НЕ сбрасываем БД (safe default)
+    if [ "$NONINTERACTIVE" = "true" ]; then
+        RESET_DB="NO"
+        echo -e "${GREEN}✓ База данных существует, сброс пропущен (noninteractive mode)${NC}"
+    else
+        read -p "Хотите удалить и пересоздать базу данных? (yes/NO): " RESET_DB
+    fi
     
     if [ "$RESET_DB" = "yes" ]; then
         # Отключаем автоматический cleanup во время reset
@@ -376,15 +419,18 @@ if [ "$DB_EXISTS" = "1" ]; then
         
         echo -e "${YELLOW}Остановка приложения...${NC}"
         systemctl stop docdev 2>/dev/null || true
+        systemctl stop doc-management 2>/dev/null || true
         
         echo -e "${YELLOW}Завершение активных подключений к базе данных...${NC}"
         sudo -u postgres psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${DB_NAME}' AND pid <> pg_backend_pid();" 2>/dev/null || true
+        sleep 2
         
         echo -e "${YELLOW}Удаление базы данных '${DB_NAME}'...${NC}"
         sudo -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" || {
             echo -e "${RED}✗ Ошибка при удалении базы данных${NC}"
             echo -e "${YELLOW}Попробуйте остановить все процессы использующие БД:${NC}"
             echo "  sudo systemctl stop docdev"
+            echo "  sudo systemctl stop doc-management"
             echo "  sudo -u postgres psql -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${DB_NAME}';\""
             SKIP_CLEANUP=false  # Включаем обратно
             exit 1
@@ -407,8 +453,20 @@ if [ "$DB_EXISTS" = "1" ]; then
     fi
 else
     echo -e "${YELLOW}Создание базы данных...${NC}"
-    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME};"
-    echo -e "${GREEN}✓ База данных создана${NC}"
+    # Идемпотентное создание используя DO блок PostgreSQL
+    sudo -u postgres psql <<CREATEDB
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '${DB_NAME}') THEN
+        CREATE DATABASE ${DB_NAME};
+        RAISE NOTICE 'База данных ${DB_NAME} создана';
+    ELSE
+        RAISE NOTICE 'База данных ${DB_NAME} уже существует';
+    END IF;
+END
+\$\$;
+CREATEDB
+    echo -e "${GREEN}✓ База данных ${DB_NAME} создана или уже существует${NC}"
 fi
 
 # Создание пользователя
@@ -475,17 +533,31 @@ echo ""
 
 # Ввод данных для приложения (если не используем существующий .env)
 if [ "$USE_EXISTING_ENV" = false ]; then
-    echo -e "${YELLOW}[8/17] Настройка приложения${NC}"
+    echo -e "${YELLOW}[8/18] Настройка приложения${NC}"
     echo ""
 
-    read -p "Порт приложения [5000]: " APP_PORT
-    APP_PORT=${APP_PORT:-5000}
+    # В неинтерактивном режиме используем env var или default
+    if [ "$NONINTERACTIVE" = "true" ]; then
+        APP_PORT=${APP_PORT:-${PORT:-5000}}
+        echo -e "${GREEN}✓ Порт приложения: ${APP_PORT} (noninteractive mode)${NC}"
+    else
+        read -p "Порт приложения [5000]: " APP_PORT
+        APP_PORT=${APP_PORT:-5000}
+    fi
 
     # Проверка что порт не занят
     if lsof -Pi :${APP_PORT} -sTCP:LISTEN -t >/dev/null 2>&1; then
         echo -e "${YELLOW}⚠ Порт ${APP_PORT} уже занят процессом:${NC}"
         lsof -Pi :${APP_PORT} -sTCP:LISTEN || true
-        read -p "Остановить процесс и освободить порт? (y/n): " KILL_PROCESS
+        
+        # В неинтерактивном режиме автоматически освобождаем порт
+        if [ "$NONINTERACTIVE" = "true" ]; then
+            KILL_PROCESS="y"
+            echo -e "${GREEN}✓ Автоматическое освобождение порта (noninteractive mode)${NC}"
+        else
+            read -p "Остановить процесс и освободить порт? (y/n): " KILL_PROCESS
+        fi
+        
         if [ "$KILL_PROCESS" = "y" ] || [ "$KILL_PROCESS" = "Y" ]; then
             PID=$(lsof -Pi :${APP_PORT} -sTCP:LISTEN -t)
             if [ ! -z "$PID" ]; then
@@ -498,8 +570,15 @@ if [ "$USE_EXISTING_ENV" = false ]; then
 
     # Определение домена или IP
     SERVER_IP=$(hostname -I | awk '{print $1}')
-    read -p "Домен для Nginx (или оставьте пустым для использования IP) [${SERVER_IP}]: " DOMAIN
-    DOMAIN=${DOMAIN:-${SERVER_IP}}
+    
+    # В неинтерактивном режиме используем env var или SERVER_IP
+    if [ "$NONINTERACTIVE" = "true" ]; then
+        DOMAIN=${DOMAIN:-${SERVER_IP}}
+        echo -e "${GREEN}✓ Домен: ${DOMAIN} (noninteractive mode)${NC}"
+    else
+        read -p "Домен для Nginx (или оставьте пустым для использования IP) [${SERVER_IP}]: " DOMAIN
+        DOMAIN=${DOMAIN:-${SERVER_IP}}
+    fi
 
     echo -e "${GREEN}✓ Домен/IP: ${DOMAIN}${NC}"
     echo ""
@@ -507,7 +586,7 @@ if [ "$USE_EXISTING_ENV" = false ]; then
     # Генерация SESSION_SECRET
     SESSION_SECRET=$(openssl rand -hex 32)
 else
-    echo -e "${YELLOW}[8/17] Настройка приложения${NC}"
+    echo -e "${YELLOW}[8/18] Настройка приложения${NC}"
     echo -e "${GREEN}✓ Используется существующая конфигурация${NC}"
     
     # Сохраняем существующий SESSION_SECRET или генерируем новый
@@ -566,7 +645,7 @@ echo -e "${GREEN}✓ .env файл создан${NC}"
 echo ""
 
 # Установка зависимостей проекта
-echo -e "${YELLOW}[9/17] Установка зависимостей проекта...${NC}"
+echo -e "${YELLOW}[9/18] Установка зависимостей проекта...${NC}"
 cd /docdev
 
 # Проверка наличия package.json
@@ -603,7 +682,7 @@ npm list connect-redis redis 2>/dev/null | grep -E "connect-redis|redis" || echo
 echo ""
 
 # КРИТИЧЕСКИ ВАЖНО: Проверка и исправление server/db.ts
-echo -e "${YELLOW}[10/17] Проверка конфигурации базы данных...${NC}"
+echo -e "${YELLOW}[10/18] Проверка конфигурации базы данных...${NC}"
 
 if [ -f "/docdev/server/db.ts" ]; then
     echo -e "${YELLOW}Проверка файла server/db.ts...${NC}"
@@ -646,7 +725,15 @@ DBEOF
         echo -e "${YELLOW}Содержимое файла:${NC}"
         head -20 /docdev/server/db.ts
         echo ""
-        read -p "Заменить на стандартную конфигурацию PostgreSQL? (y/n): " REPLACE_DB
+        
+        # В неинтерактивном режиме НЕ заменяем конфигурацию (safe default)
+        if [ "$NONINTERACTIVE" = "true" ]; then
+            REPLACE_DB="n"
+            echo -e "${YELLOW}⚠ Сохранена существующая конфигурация db.ts (noninteractive mode)${NC}"
+        else
+            read -p "Заменить на стандартную конфигурацию PostgreSQL? (y/n): " REPLACE_DB
+        fi
+        
         if [ "$REPLACE_DB" = "y" ] || [ "$REPLACE_DB" = "Y" ]; then
             cp /docdev/server/db.ts /docdev/server/db.ts.backup
             cat > /docdev/server/db.ts <<'DBEOF'
@@ -794,11 +881,18 @@ run_safe_schema_sync() {
             echo ""
         else
             echo -e "${RED}✗ Ошибка при создании резервной копии${NC}"
-            echo -e "${YELLOW}Продолжить без резервной копии? (yes/no):${NC}"
-            read -p "> " CONTINUE_WITHOUT_BACKUP
-            if [ "$CONTINUE_WITHOUT_BACKUP" != "yes" ]; then
-                echo -e "${RED}Установка прервана${NC}"
-                exit 1
+            
+            # В неинтерактивном режиме продолжаем без резервной копии
+            if [ "$NONINTERACTIVE" = "true" ]; then
+                CONTINUE_WITHOUT_BACKUP="yes"
+                echo -e "${YELLOW}⚠ Продолжение без резервной копии (noninteractive mode)${NC}"
+            else
+                echo -e "${YELLOW}Продолжить без резервной копии? (yes/no):${NC}"
+                read -p "> " CONTINUE_WITHOUT_BACKUP
+                if [ "$CONTINUE_WITHOUT_BACKUP" != "yes" ]; then
+                    echo -e "${RED}Установка прервана${NC}"
+                    exit 1
+                fi
             fi
         fi
     else
@@ -852,7 +946,7 @@ run_safe_schema_sync() {
 }
 
 # Создание таблиц в базе данных
-echo -e "${YELLOW}[11/17] Синхронизация схемы базы данных...${NC}"
+echo -e "${YELLOW}[11/18] Синхронизация схемы базы данных...${NC}"
 cd /docdev
 
 # Проверка наличия drizzle.config.ts
@@ -892,7 +986,7 @@ echo -e "${GREEN}✓ Создано таблиц: ${TABLE_COUNT}${NC}"
 echo ""
 
 # ВАЖНО: Настройка Redis сессий в routes.ts
-echo -e "${YELLOW}[12/17] Настройка Redis сессий в routes.ts...${NC}"
+echo -e "${YELLOW}[12/18] Настройка Redis сессий в routes.ts...${NC}"
 
 # Проверка существования routes.ts
 if [ ! -f "/docdev/server/routes.ts" ]; then
@@ -1026,29 +1120,50 @@ grep "const RedisStore = connectRedis" /docdev/server/routes.ts || echo "RedisSt
 echo ""
 
 # Заполнение базы данных тестовыми данными и создание администратора
-echo -e "${YELLOW}[13/17] Инициализация базы данных...${NC}"
-echo -e "${CYAN}═══════════════════════════════════════${NC}"
-echo -e "${CYAN}  Создание администратора${NC}"
-echo -e "${CYAN}═══════════════════════════════════════${NC}"
-echo ""
+echo -e "${YELLOW}[13/18] Инициализация базы данных...${NC}"
 
-read -p "Имя пользователя администратора [admin]: " ADMIN_USERNAME
-ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+# Проверка существования данных администратора из .env
+if [ "$USE_EXISTING_ENV" = "true" ] && [ ! -z "$ADMIN_USERNAME" ] && [ ! -z "$ADMIN_PASSWORD" ]; then
+    echo -e "${GREEN}✓ Используются данные администратора из .env${NC}"
+    echo -e "${CYAN}  Администратор: ${ADMIN_USERNAME}${NC}"
+    ADMIN_FULLNAME=${ADMIN_FULLNAME:-Системный администратор}
+    ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+else
+    # В неинтерактивном режиме используем env vars или defaults
+    if [ "$NONINTERACTIVE" = "true" ]; then
+        ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+        ADMIN_PASSWORD=${ADMIN_PASSWORD:-$(openssl rand -base64 20)}
+        ADMIN_FULLNAME=${ADMIN_FULLNAME:-"Системный администратор"}
+        ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+        echo -e "${GREEN}✓ Администратор создан с defaults (noninteractive mode)${NC}"
+        echo -e "${CYAN}  Логин: ${ADMIN_USERNAME}${NC}"
+        echo -e "${YELLOW}  Пароль сгенерирован автоматически - см. .env${NC}"
+    else
+        echo -e "${CYAN}═══════════════════════════════════════${NC}"
+        echo -e "${CYAN}  Создание администратора${NC}"
+        echo -e "${CYAN}═══════════════════════════════════════${NC}"
+        echo ""
 
-echo -e "${YELLOW}Введите пароль для администратора:${NC}"
-read -s ADMIN_PASSWORD
-echo ""
+        read -p "Имя пользователя администратора [admin]: " ADMIN_USERNAME
+        ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
 
-if [ -z "$ADMIN_PASSWORD" ]; then
-    echo -e "${RED}Ошибка: Пароль не может быть пустым${NC}"
-    exit 1
+        echo -e "${YELLOW}Введите пароль для администратора:${NC}"
+        read -s ADMIN_PASSWORD
+        echo ""
+
+        if [ -z "$ADMIN_PASSWORD" ]; then
+            echo -e "${RED}Ошибка: Пароль не может быть пустым${NC}"
+            exit 1
+        fi
+
+        read -p "Полное имя администратора [Системный администратор]: " ADMIN_FULLNAME
+        ADMIN_FULLNAME=${ADMIN_FULLNAME:-Системный администратор}
+
+        read -p "Email администратора [admin@example.com]: " ADMIN_EMAIL
+        ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+    fi
 fi
-
-read -p "Полное имя администратора [Системный администратор]: " ADMIN_FULLNAME
-ADMIN_FULLNAME=${ADMIN_FULLNAME:-Системный администратор}
-
-read -p "Email администратора [admin@example.com]: " ADMIN_EMAIL
-ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+echo ""
 
 # Создание скрипта для инициализации БД с кастомным администратором
 cat > /docdev/server/init-admin.ts <<'INITADMINEOF'
@@ -1227,7 +1342,7 @@ fi
 echo ""
 
 # Сборка проекта
-echo -e "${YELLOW}[14/17] Сборка проекта...${NC}"
+echo -e "${YELLOW}[14/18] Сборка проекта...${NC}"
 cd /docdev
 
 # Проверка наличия скрипта сборки
@@ -1254,7 +1369,7 @@ fi
 echo ""
 
 # Создание директорий для загрузки файлов
-echo -e "${YELLOW}[15/17] Создание необходимых директорий...${NC}"
+echo -e "${YELLOW}[15/18] Создание необходимых директорий...${NC}"
 mkdir -p /docdev/uploads
 mkdir -p /docdev/dist/public
 chmod -R 755 /docdev/uploads
@@ -1291,8 +1406,83 @@ else
 fi
 echo ""
 
+# ========== УСТАНОВКА PWA МОБИЛЬНОГО ПРИЛОЖЕНИЯ ==========
+echo -e "${YELLOW}[16/18] Установка PWA мобильного приложения...${NC}"
+
+# Проверка наличия директории mobi
+if [ ! -d "${PROJECT_DIR}/mobi" ]; then
+    echo -e "${YELLOW}⚠ Директория ${PROJECT_DIR}/mobi не найдена - пропуск установки PWA${NC}"
+else
+    echo -e "${CYAN}Установка зависимостей PWA приложения...${NC}"
+    cd ${PROJECT_DIR}/mobi
+    
+    # Проверка наличия package.json в mobi
+    if [ ! -f "package.json" ]; then
+        echo -e "${YELLOW}⚠ package.json не найден в mobi/ - пропуск${NC}"
+    else
+        # Очистка старой сборки
+        rm -rf dist build node_modules/.vite 2>/dev/null || true
+        
+        # Установка зависимостей для PWA (не прерываем при ошибках)
+        echo -e "${CYAN}Установка npm пакетов для PWA...${NC}"
+        if npm ci 2>&1 | tee /tmp/mobi-install.log || npm install 2>&1 | tee /tmp/mobi-install.log; then
+            echo -e "${GREEN}✓ Зависимости PWA установлены${NC}"
+            PWA_DEPS_INSTALLED=true
+        else
+            echo -e "${YELLOW}⚠ Не удалось установить зависимости PWA${NC}"
+            cat /tmp/mobi-install.log | tail -20
+            cd ${PROJECT_DIR}
+            echo -e "${YELLOW}⚠ Пропуск PWA - основное приложение будет работать${NC}"
+            PWA_DEPS_INSTALLED=false
+            PWA_INSTALLED=false
+        fi
+        
+        # Сборка PWA приложения только если зависимости установлены
+        if [ "${PWA_DEPS_INSTALLED:-false}" = "true" ] && [ -d "node_modules" ]; then
+            echo -e "${CYAN}Сборка PWA приложения...${NC}"
+            if npm run build 2>&1 | tee /tmp/mobi-build.log; then
+                echo -e "${GREEN}✓ PWA приложение собрано${NC}"
+                
+                # Создание директории для PWA в dist
+                mkdir -p ${PROJECT_DIR}/dist/pwa
+                
+                # Копирование собранного PWA в dist/pwa
+                if [ -d "dist" ]; then
+                    echo -e "${CYAN}Копирование PWA файлов...${NC}"
+                    if cp -r dist/* ${PROJECT_DIR}/dist/pwa/ 2>/dev/null || cp -r build/* ${PROJECT_DIR}/dist/pwa/ 2>/dev/null; then
+                        # Проверка что файлы скопированы
+                        if [ -f "${PROJECT_DIR}/dist/pwa/index.html" ]; then
+                            echo -e "${GREEN}✓ PWA файлы успешно скопированы${NC}"
+                            PWA_INSTALLED=true
+                        else
+                            echo -e "${YELLOW}⚠ index.html не найден в dist/pwa/${NC}"
+                            PWA_INSTALLED=false
+                        fi
+                    else
+                        echo -e "${YELLOW}⚠ Не удалось скопировать PWA файлы${NC}"
+                        PWA_INSTALLED=false
+                    fi
+                else
+                    echo -e "${YELLOW}⚠ Директория сборки PWA не найдена${NC}"
+                    PWA_INSTALLED=false
+                fi
+            else
+                echo -e "${YELLOW}⚠ Ошибка при сборке PWA (не критично)${NC}"
+                cat /tmp/mobi-build.log | tail -20
+                PWA_INSTALLED=false
+            fi
+        else
+            echo -e "${YELLOW}⚠ Пропуск сборки PWA (зависимости не установлены)${NC}"
+            PWA_INSTALLED=false
+        fi
+    fi
+    
+    cd ${PROJECT_DIR}
+fi
+echo ""
+
 # Настройка Nginx как reverse proxy
-echo -e "${YELLOW}[16/17] Настройка Nginx...${NC}"
+echo -e "${YELLOW}[17/18] Настройка Nginx...${NC}"
 
 cat > /etc/nginx/sites-available/doc-management <<NGINXCONFIGEOF
 # Upstream для приложения
@@ -1367,6 +1557,23 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
+    
+    # PWA мобильное приложение
+    location /pwa/ {
+        alias /docdev/dist/pwa/;
+        try_files \$uri \$uri/ /pwa/index.html;
+        
+        # Заголовки для PWA
+        add_header Cache-Control "no-cache, must-revalidate";
+        add_header X-Content-Type-Options "nosniff";
+        
+        # Service Worker и Manifest должны обновляться
+        location ~* /pwa/(sw\.js|manifest\.json)$ {
+            alias /docdev/dist/pwa/;
+            add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0";
+            add_header Pragma "no-cache";
+        }
+    }
 }
 NGINXCONFIGEOF
 
@@ -1386,7 +1593,7 @@ fi
 echo ""
 
 # Создание systemd service
-echo -e "${YELLOW}[17/17] Создание systemd service и запуск...${NC}"
+echo -e "${YELLOW}[18/18] Создание systemd service и запуск...${NC}"
 cat > /etc/systemd/system/doc-management.service <<SERVICEFILEEOF
 [Unit]
 Description=Document Management System for Gas Pipelines
@@ -1755,6 +1962,20 @@ else
     log_error "✗ .env файл не найден"
     SMOKE_TEST_FAILED=true
 fi
+echo ""
+
+# Тест 8: Проверка PWA мобильного приложения (НЕ критично)
+log_info "Тест 8: Проверка PWA мобильного приложения..."
+if [ "${PWA_INSTALLED:-false}" = "true" ] && [ -f "${PROJECT_DIR}/dist/pwa/index.html" ]; then
+    log_success "✓ PWA установлено и готово к использованию"
+    log_info "  Доступно по адресу: http://${DOMAIN}/pwa/"
+elif [ -d "${PROJECT_DIR}/mobi" ]; then
+    log_warning "⚠ PWA не установлено (не критично - опциональный компонент)"
+    log_info "  Основное приложение полностью функционально"
+else
+    log_info "  PWA не требуется (директория mobi отсутствует)"
+fi
+# PWA НЕ влияет на SMOKE_TEST_FAILED - это опциональный компонент
 echo ""
 
 # Итоговый результат smoke tests

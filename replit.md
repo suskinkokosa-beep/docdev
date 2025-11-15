@@ -1,122 +1,33 @@
 # УправДок - Document Management System
 
 ## Overview
-УправДок is a full-stack document management system designed for managing technical documentation related to gas pipeline infrastructure. It provides features for comprehensive document handling, organizational structure management, user role-based access control, and training programs. The system aims to streamline the management of critical infrastructure documentation, enhance operational efficiency, and ensure compliance through structured data management and audit trails.
-
-## Recent Changes (November 13, 2025)
-
-### Latest Critical Fixes - Production Ready (100% Reliability)
-
-**1. PDF.js Version Mismatch Fixed (CRITICAL)**
-   - ✅ Removed duplicate pdfjs-dist dependency causing version conflict
-   - ✅ Now uses react-pdf's built-in pdfjs-dist@5.4.296 for consistency
-   - ✅ Worker loaded from CDN with automatic version matching
-   - ✅ Zero browser console errors - fully functional PDF viewer
-   - **Impact**: Document viewer now works reliably across all environments
-
-**2. PostgreSQL Session Store Upgrade (PRODUCTION READY)**
-   - ✅ Migrated from in-memory to PostgreSQL persistent sessions (connect-pg-simple)
-   - ✅ Added SESSION_SECRET validation for production security
-   - ✅ Sessions survive server restarts - no more logout on deploy
-   - ✅ Improved error handling and connection pooling
-   - **Impact**: Production-grade session management
-
-**3. install.sh Hardened for Ubuntu 20+ (100% RELIABILITY)**
-   - ✅ Strict error handling: `set -euo pipefail` aborts on failures
-   - ✅ Ubuntu 20+ version check enforced at startup
-   - ✅ Secure .env creation: `chmod 600` + `chown root:root`
-   - ✅ Idempotent operations: safe to run multiple times
-   - ✅ Smoke tests: validates all services before success banner
-   - ✅ Smart logging: `/var/log/docdev-install.log` with fallback to `/tmp`
-   - ✅ Flexible PROJECT_DIR: not hardcoded to /docdev
-   - ✅ Proper function decomposition: update_system(), install_nodejs()
-   - ✅ Exit on smoke test failure: prevents false success messages
-   - **Impact**: Production deployment script with 100% reliability
-
-### Previous Updates - Production-Ready Document Viewer & PWA Mobile App
-
-1. **Улучшенный Document Viewer** (PRODUCTION READY! ✅)
-   - ✅ **PDF**: Полноценный просмотр с локальным worker (offline-ready) + навигация и масштабирование
-   - ✅ **Word .docx**: Browser-safe рендеринг через docx-preview с динамическими стилями
-   - ✅ **Excel .xlsx/.xls**: Конвертация в HTML таблицы с просмотром всех листов (xlsx)
-   - ✅ **Legacy .doc**: Специальная обработка с информативным предупреждением и кнопкой скачивания
-   - ✅ **Изображения**: Все форматы изображений и технические схемы
-   - ✅ **Текстовые файлы**: Прямой просмотр в iframe
-   - ✅ **Офлайн режим**: PDF worker загружается локально (не с CDN)
-
-2. **PWA Mobile Application** (mobi/) - ГОТОВО К УСТАНОВКЕ
-   - ✅ **Полноценное мобильное приложение** с Progressive Web App функциональностью
-   - ✅ **Офлайн режим**: Service Worker с умным кэшированием API и статических ресурсов
-   - ✅ **Кросс-порт кэширование**: API запросы кэшируются по pathname (работает с разными портами)
-   - ✅ **Мобильная навигация**: Удобный нижний таббар для смартфонов
-   - ✅ **QR Сканер**: Интерфейс для сканирования QR-кодов объектов
-   - ✅ **Оптимизация для мобильных**: Адаптивный дизайн и touch-friendly интерфейс
-   - 📱 **Установка на устройство**: SVG иконки готовы, инструменты для генерации PNG включены
-   - 💾 **IndexedDB готовность**: Подготовлено для локального хранения данных
-   - 📝 **Документация**: Полный README с инструкциями по генерации иконок
-
-3. **Replit Environment Setup**
-   - GitHub Import Completed: Successfully imported and configured the project for Replit environment
-   - Database Setup: Connected to Replit PostgreSQL database (Neon-backed)
-   - Pushed database schema using Drizzle ORM (`npm run db:push`)
-   - Seeded initial data including admin user, roles, permissions, and sample data
-   - Development Workflow: Configured development server on port 5000 (required for Replit webview)
-   - Vite configured with `allowedHosts: true` for Replit proxy compatibility
-   - Express server properly configured with host `0.0.0.0:5000`
-   - Deployment Configuration: Set up autoscale deployment target
-   - Build command: `npm run build`
-   - Start command: `npm start`
-
-4. **Default Credentials**: 
-   - Username: `admin`
-   - Password: `admin123`
-
-### Critical Production Fixes
-
-#### Document Viewer Browser Compatibility
-1. **PDF.js Worker**: Локальная загрузка через `import.meta.url` вместо CDN для офлайн работы
-2. **docx-preview Integration**: Browser-safe библиотека с динамической генерацией стилей
-3. **Word Viewer Ref Management**: Контейнер всегда монтируется с loading overlay для корректной работы
-4. **Legacy .doc Handling**: Специальное amber предупреждение с большой кнопкой скачивания
-
-#### November 13, 2025 - Earlier Production Fixes
-1. **Document Viewer Browser Compatibility**:
-   - PDF.js Worker: CDN-based loading with automatic version detection
-   - docx-preview Integration: Browser-safe library with dynamic styling
-   - Word Viewer Ref Management: Container always mounted with loading overlay
-   - Legacy .doc Handling: Special amber warning with download button
-
-2. **install.sh Security Fix**: Added `set -a; source .env; set +a` to properly export and preserve SESSION_SECRET and other sensitive environment variables when reusing existing .env files
-
-3. **Role-Based Menu Permissions**: Implemented baseline view permissions for non-admin roles
-   - Менеджер документации: dashboard, objects, documents, org_structure, training, audit (6 permissions)
-   - Инженер: dashboard, objects, documents, org_structure, training (5 permissions)
-   - Settings remains admin-only
-3. **File Upload Security**: Enhanced sanitizeFileName function to protect against Windows reserved names (CON, PRN, AUX, NUL, COM1-9, LPT1-9) with automatic prefix addition
-4. **Database Migration**: Executed SQL migration to align permission naming (orgstructure → org_structure) and add missing baseline permissions to existing databases
+УправДок is a full-stack document management system for managing technical documentation of gas pipeline infrastructure. It offers document handling, organizational structure management, user role-based access control, and training programs. The system aims to streamline documentation, enhance operational efficiency, and ensure compliance through structured data management and audit trails.
 
 ## User Preferences
 I want the agent to use simple language and provide detailed explanations when necessary. I prefer an iterative development approach, where changes are proposed and discussed before implementation. Please ask for confirmation before making any major architectural or code structure changes. Do not make changes to the `shared/schema.ts` file without explicit instruction and understanding of the database implications.
 
 ## System Architecture
-The application is a full-stack project utilizing a React 18 frontend with Vite, TypeScript, and Tailwind CSS for a modern and responsive UI/UX. The backend is built with Express.js and TypeScript. Data persistence is handled by PostgreSQL with Drizzle ORM. Authentication is managed using Passport.js with a local strategy and express-session. UI components leverage Radix UI and shadcn/ui for consistent design. File uploads are managed via Multer, supporting various document types including PDF, Office files, images, and CAD files.
+The application is a full-stack project utilizing a React 18 frontend with Vite, TypeScript, and Tailwind CSS. The backend is built with Express.js and TypeScript. Data persistence is handled by PostgreSQL with Drizzle ORM. Authentication uses Passport.js with a local strategy and express-session. UI components leverage Radix UI and shadcn/ui. File uploads are managed via Multer.
 
 ### Key Features:
--   **Document Management**: Upload, categorize, and manage documents with version control capabilities.
--   **Organizational Structure**: Multi-level hierarchy (UMG → Services → Departments) to mirror real-world organization.
--   **Object Management**: Tracking of gas pipeline infrastructure objects, including QR code integration for identification.
--   **Role-Based Access Control**: Granular permissions system to manage user access to features and data.
+-   **Document Management**: Upload, categorize, and manage documents with version control.
+-   **Organizational Structure**: Multi-level hierarchy (UMG → Services → Departments).
+-   **Object Management**: Tracking of gas pipeline infrastructure objects with QR code integration.
+-   **Role-Based Access Control**: Granular permissions system for user access.
 -   **Training Programs**: Online training modules with tests and certificate generation.
--   **Audit Log**: Comprehensive tracking of user activities within the system.
+-   **Audit Log**: Comprehensive tracking of user activities.
 -   **QR Code Scanner**: Mobile-friendly functionality for scanning object QR codes.
+-   **PWA Mobile Application**: Offline-ready Progressive Web App with mobile navigation and QR scanner.
 
 ### Technical Implementations:
 -   The application runs on port 5000, with Express serving both the API and the React frontend.
--   Database schema includes tables for Users, Roles, Permissions, Organizational units (UMG, Services, Departments), Objects, Document Categories, Documents, Training Programs, Tests, Questions, User Progress, and Audit Logs.
+-   Database schema includes tables for Users, Roles, Permissions, Organizational units, Objects, Documents, Training, and Audit Logs.
 -   Session-based authentication is used.
 -   Frontend development utilizes Vite's hot module replacement.
 -   Static files in the `/uploads` directory are served by Express.
 -   Security headers, including `X-Frame-Options: SAMEORIGIN`, are configured.
+-   The `install.sh` script is designed for idempotent, non-interactive production deployments, supporting CI/CD pipelines. It handles database setup, PWA installation, and environment configuration.
+-   The document viewer supports PDF (local worker), Word (.docx via docx-preview, .doc with download option), Excel (.xlsx/.xls converted to HTML), images, and text files.
 
 ## External Dependencies
 -   **Frontend Framework**: React 18
@@ -128,5 +39,7 @@ The application is a full-stack project utilizing a React 18 frontend with Vite,
 -   **ORM**: Drizzle ORM
 -   **Authentication**: Passport.js, express-session
 -   **File Uploads**: Multer
--   **Session Management**: express-session
--   **QR Code Handling**: Integrated scanner for object identification.
+-   **Session Management**: connect-pg-simple
+-   **PDF Viewer**: react-pdf (using pdfjs-dist)
+-   **Word Document Preview**: docx-preview
+-   **QR Code Handling**: Integrated scanner functionality
