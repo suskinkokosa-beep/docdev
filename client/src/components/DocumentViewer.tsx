@@ -109,7 +109,25 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
       wordContainerRef.current.innerHTML = '';
       
       const { renderAsync } = await import('docx-preview');
-      await renderAsync(blob, wordContainerRef.current);
+      
+      // Оптимизированные настройки для лучшего отображения
+      await renderAsync(blob, wordContainerRef.current, undefined, {
+        className: 'docx-preview-content',
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        ignoreFonts: false,
+        breakPages: true,
+        ignoreLastRenderedPageBreak: false,
+        experimental: true,
+        trimXmlDeclaration: true,
+        useBase64URL: true,
+        renderHeaders: true,
+        renderFooters: true,
+        renderFootnotes: true,
+        renderEndnotes: true,
+        debug: false,
+      });
       
       setWordContent('rendered');
     } catch (err) {
@@ -130,21 +148,71 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
       const response = await fetch(`/api/documents/${document.id}/download`);
       const arrayBuffer = await response.arrayBuffer();
       
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const workbook = XLSX.read(arrayBuffer, { 
+        type: 'array',
+        cellNF: true // Загружаем форматы чисел
+      });
       
       let htmlContent = '';
-      workbook.SheetNames.forEach((sheetName, index) => {
+      workbook.SheetNames.forEach((sheetName) => {
         const worksheet = workbook.Sheets[sheetName];
-        const htmlTable = XLSX.utils.sheet_to_html(worksheet, { 
-          header: '',
-          footer: ''
-        });
+        
+        // Экранируем название листа для безопасности
+        const safeSheetName = sheetName
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+        
+        // Получаем диапазон ячеек
+        const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+        let tableHTML = '<table class="excel-table">';
+        
+        // Проходим по всем строкам
+        for (let R = range.s.r; R <= range.e.r; ++R) {
+          tableHTML += '<tr>';
+          
+          // Проходим по всем колонкам
+          for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+            const cell = worksheet[cellAddress];
+            
+            let cellValue = '';
+            
+            if (cell) {
+              // Получаем значение ячейки
+              let rawValue = '';
+              if (cell.w) {
+                rawValue = String(cell.w); // Форматированное значение
+              } else if (cell.v !== undefined) {
+                rawValue = String(cell.v);
+              }
+              
+              // Экранируем HTML для безопасности (защита от XSS)
+              cellValue = rawValue
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            }
+            
+            // Не используем стили из XLSX (бесплатная версия их не предоставляет)
+            // Стили применяются через CSS классы
+            tableHTML += `<td>${cellValue}</td>`;
+          }
+          
+          tableHTML += '</tr>';
+        }
+        
+        tableHTML += '</table>';
         
         htmlContent += `
-          <div class="mb-6">
-            <h3 class="text-lg font-semibold mb-3 bg-gray-100 dark:bg-gray-800 p-2 rounded">${sheetName}</h3>
-            <div class="overflow-x-auto">
-              ${htmlTable}
+          <div class="excel-sheet mb-6">
+            <h3 class="sheet-name">${safeSheetName}</h3>
+            <div class="table-container">
+              ${tableHTML}
             </div>
           </div>
         `;
@@ -165,10 +233,42 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
     try {
       const response = await fetch(`/api/documents/${document.id}/download`);
       const blob = await response.blob();
+      
+      // Извлекаем имя файла из заголовка Content-Disposition
+      let fileName = document.fileName;
+      const contentDisposition = response.headers.get('Content-Disposition');
+      if (contentDisposition) {
+        // Сначала пытаемся извлечь filename* (RFC 5987) - уже закодирован в UTF-8
+        const filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/i);
+        if (filenameStarMatch && filenameStarMatch[1]) {
+          try {
+            fileName = decodeURIComponent(filenameStarMatch[1]);
+          } catch {
+            fileName = filenameStarMatch[1]; // Если не удалось декодировать, используем как есть
+          }
+        } else {
+          // Fallback на обычный filename
+          const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?(?:;|$)/i);
+          if (filenameMatch && filenameMatch[1]) {
+            const rawFilename = filenameMatch[1];
+            // Проверяем, содержит ли процент-кодирование
+            if (/%[0-9A-Fa-f]{2}/.test(rawFilename)) {
+              try {
+                fileName = decodeURIComponent(rawFilename);
+              } catch {
+                fileName = rawFilename; // Если не удалось декодировать, используем как есть
+              }
+            } else {
+              fileName = rawFilename; // Уже в чистом виде
+            }
+          }
+        }
+      }
+      
       const url = window.URL.createObjectURL(blob);
       const a = window.document.createElement('a');
       a.href = url;
-      a.download = document.fileName;
+      a.download = fileName;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (error) {
@@ -278,25 +378,107 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
       return (
         <div className="excel-document-content">
           <style>{`
-            .excel-document-content table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-bottom: 1rem;
+            .excel-document-content {
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 11pt;
             }
-            .excel-document-content td, .excel-document-content th {
-              border: 1px solid #e5e7eb;
+            
+            .excel-sheet {
+              margin-bottom: 2rem;
+            }
+            
+            .excel-sheet .sheet-name {
+              font-size: 1.125rem;
+              font-weight: 600;
+              margin-bottom: 0.75rem;
               padding: 0.5rem;
-              text-align: left;
+              background: linear-gradient(to right, #f3f4f6, transparent);
+              border-left: 4px solid #3b82f6;
             }
-            .dark .excel-document-content td, .dark .excel-document-content th {
+            
+            .dark .excel-sheet .sheet-name {
+              background: linear-gradient(to right, #1f2937, transparent);
+              border-left-color: #60a5fa;
+            }
+            
+            .excel-document-content .table-container {
+              overflow-x: auto;
+              background: white;
+              border: 1px solid #d1d5db;
+              border-radius: 0.375rem;
+            }
+            
+            .dark .excel-document-content .table-container {
+              background: #111827;
               border-color: #374151;
             }
-            .excel-document-content th {
+            
+            .excel-document-content .excel-table {
+              width: 100%;
+              border-collapse: collapse;
+              min-width: 600px;
+            }
+            
+            .excel-document-content .excel-table td,
+            .excel-document-content .excel-table th {
+              border: 1px solid #d1d5db;
+              padding: 0.4rem 0.6rem;
+              min-width: 60px;
+              white-space: pre-wrap;
+              vertical-align: top;
+              font-size: 11pt;
+            }
+            
+            .dark .excel-document-content .excel-table td,
+            .dark .excel-document-content .excel-table th {
+              border-color: #374151;
+            }
+            
+            .excel-document-content .excel-table td:empty {
+              min-height: 20px;
+              background: #fafafa;
+            }
+            
+            .dark .excel-document-content .excel-table td:empty {
+              background: #0f1419;
+            }
+            
+            .excel-document-content .excel-table th {
+              background-color: #f9fafb;
+              font-weight: 600;
+              text-align: center;
+            }
+            
+            .dark .excel-document-content .excel-table th {
+              background-color: #1f2937;
+            }
+            
+            /* Стили для ячеек первой строки (обычно заголовки) */
+            .excel-document-content .excel-table tr:first-child td {
               background-color: #f3f4f6;
               font-weight: 600;
             }
-            .dark .excel-document-content th {
+            
+            .dark .excel-document-content .excel-table tr:first-child td {
               background-color: #1f2937;
+            }
+            
+            /* Чередующиеся строки для лучшей читаемости */
+            .excel-document-content .excel-table tr:nth-child(even) {
+              background-color: #f9fafb;
+            }
+            
+            .dark .excel-document-content .excel-table tr:nth-child(even) {
+              background-color: #111827;
+            }
+            
+            /* Hover эффект */
+            .excel-document-content .excel-table tr:hover {
+              background-color: #eff6ff;
+            }
+            
+            .dark .excel-document-content .excel-table tr:hover {
+              background-color: #1e3a5f;
             }
           `}</style>
           <div 
@@ -313,14 +495,33 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
     }
 
     if (mimeType.startsWith('image/')) {
+      const isSvg = mimeType === 'image/svg+xml' || document.fileName.toLowerCase().endsWith('.svg');
+      
       return (
         <div className="flex justify-center items-center bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
-          <img 
-            src={fileUrl} 
-            alt={document.name}
-            className="max-w-full h-auto rounded-lg"
-            style={{ maxHeight: '70vh' }}
-          />
+          {isSvg ? (
+            <object 
+              data={fileUrl} 
+              type="image/svg+xml"
+              className="max-w-full h-auto rounded-lg"
+              style={{ maxHeight: '70vh', minWidth: '400px' }}
+              aria-label={document.name}
+            >
+              <img 
+                src={fileUrl} 
+                alt={document.name}
+                className="max-w-full h-auto rounded-lg"
+                style={{ maxHeight: '70vh' }}
+              />
+            </object>
+          ) : (
+            <img 
+              src={fileUrl} 
+              alt={document.name}
+              className="max-w-full h-auto rounded-lg"
+              style={{ maxHeight: '70vh' }}
+            />
+          )}
         </div>
       );
     }
@@ -387,6 +588,10 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
     const isDwg = document.fileName.toLowerCase().endsWith('.dwg');
     const isOtherCAD = /\.(dxf|dwf|dgn|rvt|ifc|stp|step|igs|iges)$/i.test(document.fileName);
     const isArchive = /\.(zip|rar|7z|tar|gz)$/i.test(document.fileName);
+    const isPowerPoint = mimeType === 'application/vnd.ms-powerpoint' 
+      || mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      || document.fileName.endsWith('.ppt')
+      || document.fileName.endsWith('.pptx');
     
     if (isDwg || isOtherCAD) {
       return (
@@ -415,6 +620,37 @@ export function DocumentViewer({ document, isOpen, onClose }: DocumentViewerProp
           <Button onClick={handleDownload} size="lg">
             <Download className="mr-2 h-5 w-5" />
             Скачать файл для просмотра
+          </Button>
+        </div>
+      );
+    }
+    
+    if (isPowerPoint) {
+      return (
+        <div className="flex flex-col items-center justify-center p-8 text-center">
+          <div className="mb-6 p-8 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+            <svg className="mx-auto h-24 w-24 text-orange-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-3 3l3-3-3-3" />
+            </svg>
+            <p className="text-orange-800 dark:text-orange-200 font-semibold mb-2 text-lg">
+              Презентация PowerPoint ({document.fileName.split('.').pop()?.toUpperCase()})
+            </p>
+            <p className="text-orange-700 dark:text-orange-300 text-sm mb-4 max-w-md">
+              Для просмотра и редактирования презентаций используйте Microsoft PowerPoint, LibreOffice Impress или Google Slides.
+            </p>
+            <div className="text-left text-sm text-orange-600 dark:text-orange-400 mb-4 max-w-md mx-auto">
+              <p className="font-medium mb-1">Рекомендуемые программы:</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Microsoft PowerPoint (платно)</li>
+                <li>LibreOffice Impress (бесплатно)</li>
+                <li>Google Slides (онлайн, бесплатно)</li>
+              </ul>
+            </div>
+          </div>
+          <Button onClick={handleDownload} size="lg">
+            <Download className="mr-2 h-5 w-5" />
+            Скачать презентацию
           </Button>
         </div>
       );
