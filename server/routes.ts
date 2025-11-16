@@ -117,9 +117,13 @@ const storage_multer = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const sanitizedName = sanitizeFileName(file.originalname);
-    cb(null, uniqueSuffix + '-' + sanitizedName);
+    // Используем только UUID + расширение для имени файла на диске
+    // Это решает проблему с кириллицей и специальными символами
+    const ext = path.extname(file.originalname);
+    import('crypto').then(crypto => {
+      const uuid = crypto.randomUUID();
+      cb(null, `${uuid}${ext}`);
+    });
   }
 });
 
@@ -1099,19 +1103,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Правильная кодировка имени файла для кириллицы
-      // Используем оба формата для максимальной совместимости браузеров
+      // Используем несколько подходов для максимальной совместимости браузеров
       const fileName = doc.fileName;
       const safeFileName = sanitizeFileName(fileName);
       
-      // Создаем ASCII fallback имя (заменяем не-ASCII символы на _)
-      const asciiFallback = safeFileName.replace(/[^\x00-\x7F]/g, '_');
+      // Проверяем User-Agent для определения браузера
+      const userAgent = req.get('user-agent') || '';
+      const isChrome = /Chrome/.test(userAgent) && !/Edge/.test(userAgent);
+      const isFirefox = /Firefox/.test(userAgent);
+      const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
       
-      // RFC 2231/5987 формат для UTF-8 имен
-      const encodedFileName = encodeURIComponent(safeFileName);
+      let contentDisposition: string;
       
-      // Устанавливаем оба варианта для совместимости
-      res.setHeader('Content-Disposition', 
-        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedFileName}`);
+      // Для современных браузеров используем RFC 5987 (filename*)
+      // Для Safari и старых версий используем percent-encoding в filename
+      if (isChrome || isFirefox) {
+        // RFC 5987 формат: filename*=UTF-8''encoded-name
+        const encodedFileName = encodeURIComponent(safeFileName);
+        contentDisposition = `attachment; filename*=UTF-8''${encodedFileName}`;
+      } else if (isSafari) {
+        // Safari поддерживает percent-encoded имена в filename
+        const encodedFileName = encodeURIComponent(safeFileName);
+        contentDisposition = `attachment; filename="${encodedFileName}"`;
+      } else {
+        // Универсальный fallback для остальных браузеров
+        // Используем оба варианта для максимальной совместимости
+        const asciiFallback = safeFileName.replace(/[^\x00-\x7F]/g, '_');
+        const encodedFileName = encodeURIComponent(safeFileName);
+        contentDisposition = `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedFileName}`;
+      }
+      
+      res.setHeader('Content-Disposition', contentDisposition);
+      res.setHeader('Content-Type', doc.mimeType);
       res.sendFile(filePathResolved);
     } catch (error) {
       res.status(500).json({ error: 'Ошибка при скачивании документа' });
@@ -1124,7 +1147,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!doc) {
         return res.status(404).json({ error: 'Документ не найден' });
       }
-      await fs.unlink(doc.filePath);
+      
+      // Пытаемся удалить файл, но не падаем если его нет
+      try {
+        await fs.access(doc.filePath);
+        await fs.unlink(doc.filePath);
+      } catch (fileError) {
+        // Файл уже удален или не существует - это нормально
+        console.log(`Файл ${doc.filePath} не найден или уже удален`);
+      }
+      
       await storage.deleteDocument(req.params.id);
       await storage.insertAuditLog({
         userId: (req.user as any).id,

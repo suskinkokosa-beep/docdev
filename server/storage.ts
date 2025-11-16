@@ -409,6 +409,10 @@ export const storage = {
   },
 
   async deleteDocument(id: string) {
+    // Сначала удаляем связанные записи
+    await db.delete(documentServices).where(eq(documentServices.documentId, id));
+    await db.delete(documentVersions).where(eq(documentVersions.documentId, id));
+    // Теперь удаляем сам документ
     await db.delete(documents).where(eq(documents.id, id));
   },
 
