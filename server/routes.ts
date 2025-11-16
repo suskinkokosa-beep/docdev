@@ -17,26 +17,77 @@ await fs.mkdir(uploadDir, { recursive: true });
 
 // Разрешенные типы файлов
 const ALLOWED_MIME_TYPES = [
+  // Документы
   'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/msword', // .doc
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/vnd.ms-excel', // .xls
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+  'application/vnd.ms-powerpoint', // .ppt
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+  
+  // Изображения
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/gif',
   'image/webp',
+  'image/bmp',
+  'image/tiff',
+  'image/svg+xml',
+  'image/x-icon',
+  
+  // Текстовые файлы
   'text/plain',
   'text/csv',
+  'text/html',
+  'text/xml',
+  'application/xml',
+  'application/json',
+  
+  // CAD и технические файлы
   'application/acad',
   'application/x-dwg',
-  'application/octet-stream', // для CAD файлов
+  'application/dxf',
+  'application/x-dxf',
+  
+  // Архивы
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/x-rar-compressed',
+  'application/x-7z-compressed',
+  'application/gzip',
+  'application/x-tar',
+  
+  // Универсальный тип для файлов без определенного MIME
+  'application/octet-stream',
 ];
 
 // Максимальный размер файла: 100MB
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
+
+// Функция для правильного декодирования имени файла из multer
+// Multer может неправильно декодировать UTF-8 имена файлов из form-data
+function decodeFileName(fileName: string): string {
+  try {
+    // Проверяем, не искажено ли имя файла (кракозябры вида ÐÑÐ¸Ð¼ÐµÑ)
+    // Это происходит когда UTF-8 байты интерпретируются как Latin-1
+    if (/[\u0080-\u00FF]{2,}/.test(fileName)) {
+      // Пытаемся исправить: кодируем как Latin-1, затем декодируем как UTF-8
+      const bytes = new Uint8Array(fileName.split('').map(c => c.charCodeAt(0)));
+      const decoder = new TextDecoder('utf-8');
+      const corrected = decoder.decode(bytes);
+      // Проверяем, что результат выглядит нормально (содержит кириллицу или допустимые символы)
+      if (/^[\p{L}\p{N}\s\-_.()]+$/u.test(corrected.replace(/\.[^.]+$/, ''))) {
+        return corrected;
+      }
+    }
+    return fileName;
+  } catch {
+    // Если не удалось исправить, возвращаем как есть
+    return fileName;
+  }
+}
 
 // Функция для очистки имени файла от path traversal
 // Сохраняет кириллические, Unicode и эмодзи символы
@@ -127,13 +178,32 @@ const storage_multer = multer.diskStorage({
   }
 });
 
-// Фильтр файлов
+// Фильтр файлов с гибкой проверкой
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error(`Тип файла ${file.mimetype} не разрешен. Разрешенные типы: ${ALLOWED_MIME_TYPES.join(', ')}`));
+  const mimeType = file.mimetype;
+  
+  // Проверяем точное совпадение
+  if (ALLOWED_MIME_TYPES.includes(mimeType)) {
+    return cb(null, true);
   }
+  
+  // Проверяем гибкие паттерны для PowerPoint и Office документов
+  const flexiblePatterns = [
+    /^application\/vnd\.ms-powerpoint/,  // все варианты PowerPoint (.ppt, .pptx, с макросами и т.д.)
+    /^application\/vnd\.openxmlformats-officedocument\.presentationml\./,  // все варианты PPTX
+    /^application\/vnd\.ms-excel/,  // все варианты Excel
+    /^application\/vnd\.openxmlformats-officedocument\.spreadsheetml\./,  // все варианты XLSX
+    /^application\/vnd\.ms-word/,  // все варианты Word
+    /^application\/vnd\.openxmlformats-officedocument\.wordprocessingml\./,  // все варианты DOCX
+  ];
+  
+  for (const pattern of flexiblePatterns) {
+    if (pattern.test(mimeType)) {
+      return cb(null, true);
+    }
+  }
+  
+  cb(new Error(`Тип файла ${file.mimetype} не разрешен. Разрешенные типы: PDF, Word, Excel, PowerPoint, изображения, текстовые файлы, CAD файлы, архивы.`));
 };
 
 const upload = multer({ 
@@ -1017,9 +1087,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Размер файла превышает максимально допустимый (${MAX_FILE_SIZE / 1024 / 1024}MB)` });
       }
       
+      const decodedFileName = decodeFileName(req.file.originalname);
       const document = await storage.insertDocument({
-        name: req.body.name || sanitizeFileName(req.file.originalname),
-        fileName: sanitizeFileName(req.file.originalname),
+        name: req.body.name || sanitizeFileName(decodedFileName),
+        fileName: sanitizeFileName(decodedFileName),
         filePath: req.file.path,
         fileSize: req.file.size,
         mimeType: req.file.mimetype,
@@ -1103,35 +1174,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Правильная кодировка имени файла для кириллицы
-      // Используем несколько подходов для максимальной совместимости браузеров
+      // Используем универсальный подход для максимальной совместимости
       const fileName = doc.fileName;
       const safeFileName = sanitizeFileName(fileName);
       
-      // Проверяем User-Agent для определения браузера
-      const userAgent = req.get('user-agent') || '';
-      const isChrome = /Chrome/.test(userAgent) && !/Edge/.test(userAgent);
-      const isFirefox = /Firefox/.test(userAgent);
-      const isSafari = /Safari/.test(userAgent) && !/Chrome/.test(userAgent);
+      // Создаем ASCII fallback для старых браузеров
+      const asciiFallback = safeFileName.replace(/[^\x00-\x7F]/g, '_');
       
-      let contentDisposition: string;
+      // RFC 5987 формат для UTF-8 имен файлов
+      const encodedFileName = encodeURIComponent(safeFileName);
       
-      // Для современных браузеров используем RFC 5987 (filename*)
-      // Для Safari и старых версий используем percent-encoding в filename
-      if (isChrome || isFirefox) {
-        // RFC 5987 формат: filename*=UTF-8''encoded-name
-        const encodedFileName = encodeURIComponent(safeFileName);
-        contentDisposition = `attachment; filename*=UTF-8''${encodedFileName}`;
-      } else if (isSafari) {
-        // Safari поддерживает percent-encoded имена в filename
-        const encodedFileName = encodeURIComponent(safeFileName);
-        contentDisposition = `attachment; filename="${encodedFileName}"`;
-      } else {
-        // Универсальный fallback для остальных браузеров
-        // Используем оба варианта для максимальной совместимости
-        const asciiFallback = safeFileName.replace(/[^\x00-\x7F]/g, '_');
-        const encodedFileName = encodeURIComponent(safeFileName);
-        contentDisposition = `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedFileName}`;
-      }
+      // Используем оба формата для максимальной совместимости:
+      // - filename="..." для старых браузеров (ASCII fallback)
+      // - filename*=UTF-8''... для современных браузеров (RFC 5987)
+      const contentDisposition = `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedFileName}`;
       
       res.setHeader('Content-Disposition', contentDisposition);
       res.setHeader('Content-Type', doc.mimeType);
@@ -1333,10 +1389,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Размер файла превышает максимально допустимый (${MAX_FILE_SIZE / 1024 / 1024}MB)` });
       }
       
+      const decodedFileName = decodeFileName(req.file.originalname);
       const version = await storage.createDocumentVersion({
         documentId: req.params.id,
         version: doc.version + 1,
-        fileName: sanitizeFileName(req.file.originalname),
+        fileName: sanitizeFileName(decodedFileName),
         filePath: req.file.path,
         fileSize: req.file.size,
         mimeType: req.file.mimetype,
@@ -1345,7 +1402,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       await storage.updateDocument(req.params.id, { 
         version: doc.version + 1,
-        fileName: sanitizeFileName(req.file.originalname),
+        fileName: sanitizeFileName(decodedFileName),
         filePath: req.file.path,
         fileSize: req.file.size,
         mimeType: req.file.mimetype
@@ -1559,9 +1616,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           continue; // Пропускаем файлы, превышающие лимит
         }
         
+        const decodedFileName = decodeFileName(file.originalname);
         const document = await storage.insertDocument({
-          name: sanitizeFileName(file.originalname),
-          fileName: sanitizeFileName(file.originalname),
+          name: sanitizeFileName(decodedFileName),
+          fileName: sanitizeFileName(decodedFileName),
           filePath: file.path,
           fileSize: file.size,
           mimeType: file.mimetype,
@@ -1660,11 +1718,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: `Размер файла превышает максимально допустимый (${MAX_FILE_SIZE / 1024 / 1024}MB)` });
       }
       
+      const decodedFileName = decodeFileName(req.file.originalname);
       const template = await storage.createTemplate({
         name: req.body.name,
         description: req.body.description || null,
         categoryId: req.body.categoryId || null,
-        fileName: sanitizeFileName(req.file.originalname),
+        fileName: sanitizeFileName(decodedFileName),
         filePath: req.file.path,
         fileSize: req.file.size,
         mimeType: req.file.mimetype,

@@ -45,7 +45,17 @@ The application is a full-stack project utilizing a React 18 frontend with Vite,
 -   **Word Document Preview**: docx-preview
 -   **QR Code Handling**: Integrated scanner functionality
 
-## Recent Changes (November 15, 2025)
+## Recent Changes
+
+### Document Viewer Improvements (November 16, 2025)
+-   **Enhanced Excel Rendering**: Completely rewritten Excel document viewer with professional table styling including borders, alternating row colors, hover effects, and header formatting
+-   **Improved Word Document Preview**: Optimized docx-preview configuration with support for headers, footers, footnotes, endnotes, and experimental rendering features for better formatting preservation
+-   **XSS Security Hardening**: All user-controlled content (cell values, sheet names) is properly HTML-escaped to prevent injection attacks
+-   **Safe Static Styling**: Excel tables use CSS classes instead of workbook-controlled inline styles, eliminating security risks while maintaining professional appearance
+-   **UTF-8 Filename Support**: Added decodeFileName() helper function to correctly handle Russian/Cyrillic characters in filenames during upload and download
+-   **Robust Error Handling**: Improved error messages and loading states for better user experience when documents fail to load
+
+### Replit Environment Setup (November 15, 2025)
 
 ### Replit Environment Setup
 -   **Database**: Configured PostgreSQL database with Replit's built-in PostgreSQL service
